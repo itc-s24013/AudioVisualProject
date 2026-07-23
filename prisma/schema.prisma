@@ -1,0 +1,59 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  username     String
+  isLoggedIn   Boolean   @default(false) @map("is_logged_in")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+
+  presets      Preset[]
+
+  @@map("users")
+}
+
+model Preset {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  name           String
+  settings       Json
+  isDefault      Boolean   @default(false) @map("is_default")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user           User      @relation(fields: [userId], references: [id])
+  designSetting  DesignSetting?
+
+  @@map("presets")
+}
+
+model DesignSetting {
+  id             String   @id @default(uuid())
+  presetId       String   @unique @map("preset_id")
+  lineColor      String   @map("line_color")
+  lineWidth      Int      @map("line_width")
+  graphType      String   @map("graph_type")
+  sensitivity    Float
+  effectType     String   @map("effect_type")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  preset         Preset   @relation(fields: [presetId], references: [id])
+
+  @@map("design_settings")
+}
