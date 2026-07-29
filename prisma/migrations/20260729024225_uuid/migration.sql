@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "users" (
-    "id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
     "email" TEXT NOT NULL,
     "username" TEXT NOT NULL,
     "is_logged_in" BOOLEAN NOT NULL DEFAULT false,
@@ -13,8 +13,8 @@ CREATE TABLE "users" (
 
 -- CreateTable
 CREATE TABLE "presets" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
+    "id" UUID NOT NULL,
+    "user_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "settings" JSONB NOT NULL,
     "is_default" BOOLEAN NOT NULL DEFAULT false,
@@ -28,7 +28,7 @@ CREATE TABLE "presets" (
 -- CreateTable
 CREATE TABLE "design_settings" (
     "id" TEXT NOT NULL,
-    "preset_id" TEXT NOT NULL,
+    "preset_id" UUID NOT NULL,
     "line_color" TEXT NOT NULL,
     "line_width" INTEGER NOT NULL,
     "graph_type" TEXT NOT NULL,
