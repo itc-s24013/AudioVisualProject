@@ -16,6 +16,8 @@ export default function AudioPlayer() {
   const [duration, setDuration] = useState(0);
 
   const handleFileChange = (file: File) => {
+    console.log("選択したファイル:", file);
+
     const url = URL.createObjectURL(file);
 
     if (audioRef.current) {
@@ -24,9 +26,23 @@ export default function AudioPlayer() {
     }
   };
 
-  const playAudio = () => {
-    audioRef.current?.play();
-  };
+const playAudio = async () => {
+  console.log("再生ボタンが押されました");
+
+  if (!audioRef.current) {
+    console.log("audioRef.current がありません");
+    return;
+  }
+
+  console.log("src:", audioRef.current.src);
+
+  try {
+    await audioRef.current.play();
+    console.log("再生成功");
+  } catch (error) {
+    console.error("再生エラー:", error);
+  }
+};
 
   const stopAudio = () => {
     if (audioRef.current) {
@@ -62,6 +78,7 @@ export default function AudioPlayer() {
 
       <audio
         ref={audioRef}
+        controls
         onTimeUpdate={() => {
           if (audioRef.current) {
             setCurrentTime(audioRef.current.currentTime);
