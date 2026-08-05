@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { deleteCurrentAccount, getCurrentAccountInfo, signOut } from "../login/actions";
 import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, setDefaultPresetInSupabase, updatePresetInSupabase } from "./actions";
 
 interface PresetItem {
@@ -36,6 +37,9 @@ export default function PresetManager() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [audioName, setAudioName] = useState("サンプル音声");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState("読み込み中...");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const previousObjectUrlRef = useRef<string | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -84,6 +88,19 @@ export default function PresetManager() {
         showToast(text);
       } finally {
         setHasLoaded(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const account = await getCurrentAccountInfo();
+        setAccountName(account.name);
+        setAccountEmail(account.email);
+      } catch {
+        setAccountName("アカウント");
+        setAccountEmail("");
       }
     })();
   }, []);
@@ -340,20 +357,66 @@ export default function PresetManager() {
 
       <aside className="mt-8 w-full px-6 pb-10 lg:px-8 lg:pr-[30rem]">
         <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm lg:fixed lg:right-6 lg:top-6 lg:bottom-6 lg:z-30 lg:w-[26rem] lg:overflow-y-auto lg:shadow-xl lg:shadow-slate-200/70">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <h2 className="text-lg font-semibold text-slate-900">デザイン設定パネル</h2>
-            {editingId ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm(initialForm);
-                  showToast("新規作成モードに戻りました。");
-                }}
-                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-              >
-                キャンセル
-              </button>
+          <div className="border-b border-slate-100 pb-4">
+            <div className="relative flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">アカウント</p>
+                <button
+                  type="button"
+                  onClick={() => setIsAccountMenuOpen((current) => !current)}
+                  className="mt-1 flex items-center gap-2 text-left text-lg font-semibold text-slate-900 transition hover:text-slate-700"
+                >
+                  <span className="max-w-[14rem] truncate">{accountName}</span>
+                  <span className="text-sm text-slate-400">▾</span>
+                </button>
+                {accountEmail ? <p className="mt-1 text-xs text-slate-500">{accountEmail}</p> : null}
+              </div>
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm(initialForm);
+                    showToast("新規作成モードに戻りました。");
+                  }}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  キャンセル
+                </button>
+              ) : null}
+            </div>
+
+            {isAccountMenuOpen ? (
+              <div className="mt-3 w-full rounded-none border border-slate-200 bg-slate-50 p-2 shadow-sm">
+                <form>
+                  <button
+                    type="submit"
+                    formAction={signOut}
+                    className="w-full rounded-none px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-white hover:text-slate-900"
+                    onClick={() => {
+                      window.localStorage.removeItem(STORAGE_KEY);
+                    }}
+                  >
+                    ログアウト
+                  </button>
+                </form>
+                <form>
+                  <button
+                    type="submit"
+                    formAction={deleteCurrentAccount}
+                    className="mt-1 w-full rounded-none px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+                    onClick={(event) => {
+                      if (!window.confirm("アカウントを削除すると元に戻せません。続行しますか？")) {
+                        event.preventDefault();
+                        return;
+                      }
+                      window.localStorage.removeItem(STORAGE_KEY);
+                    }}
+                  >
+                    アカウント削除
+                  </button>
+                </form>
+              </div>
             ) : null}
           </div>
 
