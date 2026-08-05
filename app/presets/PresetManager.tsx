@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, updatePresetInSupabase } from "./actions";
+import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, setDefaultPresetInSupabase, updatePresetInSupabase } from "./actions";
 
 interface PresetItem {
   id: string;
@@ -12,6 +12,7 @@ interface PresetItem {
   graphType: string;
   sensitivity: number;
   effectType: string;
+  isDefault: boolean;
   createdAt: string;
 }
 
@@ -30,12 +31,30 @@ export default function PresetManager() {
   const [presets, setPresets] = useState<PresetItem[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [message, setMessage] = useState("プリセットを保存して、デザイン設定を管理できます。");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [audioName, setAudioName] = useState("サンプル音声");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const previousObjectUrlRef = useRef<string | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (msg: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2000);
+  };
+
+  const closeToast = () => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(null);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -51,7 +70,7 @@ export default function PresetManager() {
           try {
             const parsed = JSON.parse(saved) as PresetItem[];
             if (parsed.length > 0) {
-              setPresets(parsed);
+              setPresets(parsed.map((preset) => ({ ...preset, isDefault: Boolean(preset.isDefault) })));
             }
           } catch {
             // 何もしない
@@ -60,12 +79,9 @@ export default function PresetManager() {
 
         const remotePresets = await loadPresetsFromSupabase();
         setPresets(remotePresets);
-        if (remotePresets.length > 0) {
-          setMessage("Supabase から既存のプリセットを読み込みました。");
-        }
       } catch (error) {
-        const text = error instanceof Error ? error.message : "プリセットの読み込みに失敗しました。";
-        setMessage(text);
+        const text = error instanceof Error ? error.message : "読み込みに失敗しました。";
+        showToast(text);
       } finally {
         setHasLoaded(true);
       }
@@ -76,7 +92,7 @@ export default function PresetManager() {
     event.preventDefault();
 
     if (!form.name.trim()) {
-      setMessage("プリセット名を入力してください。");
+      showToast("プリセット名を入力してください。");
       return;
     }
 
@@ -104,12 +120,12 @@ export default function PresetManager() {
         return [nextPreset, ...current];
       });
 
-      setMessage(editingId ? `${nextPreset.name} を更新しました。` : `${nextPreset.name} を保存しました。`);
+      showToast(editingId ? `${nextPreset.name} を更新しました。` : `${nextPreset.name} を保存しました。`);
       setForm(initialForm);
       setEditingId(null);
     } catch (error) {
       const text = error instanceof Error ? error.message : "保存に失敗しました。";
-      setMessage(text);
+      showToast(text);
     } finally {
       setIsSaving(false);
     }
@@ -125,7 +141,7 @@ export default function PresetManager() {
       effectType: preset.effectType,
     });
     setEditingId(preset.id);
-    setMessage(`${preset.name} を編集中です。`);
+    showToast(`${preset.name} を編集中です。`);
   };
 
   const handleDelete = async (id: string) => {
@@ -138,10 +154,26 @@ export default function PresetManager() {
         setEditingId(null);
         setForm(initialForm);
       }
-      setMessage(target ? `${target.name} を削除しました。` : "プリセットを削除しました。");
+      showToast(target ? `${target.name} を削除しました。` : "プリセットを削除しました。");
     } catch (error) {
       const text = error instanceof Error ? error.message : "削除に失敗しました。";
-      setMessage(text);
+      showToast(text);
+    }
+  };
+
+  const handlePinPreset = async (id: string) => {
+    try {
+      const pinnedPreset = await setDefaultPresetInSupabase(id);
+      setPresets((current) =>
+        current.map((preset) => ({
+          ...preset,
+          isDefault: preset.id === pinnedPreset.id,
+        }))
+      );
+      showToast(`${pinnedPreset.name} をデフォルトに設定しました。`);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "デフォルト設定に失敗しました。";
+      showToast(text);
     }
   };
 
@@ -155,7 +187,7 @@ export default function PresetManager() {
     if (!isAudioType && !isAudioExtension) {
       event.target.value = "";
       alert("音声ファイルをアップロードしてください");
-      setMessage("音声ファイルをアップロードしてください");
+      showToast("音声ファイルをアップロードしてください");
       return;
     }
 
@@ -167,7 +199,7 @@ export default function PresetManager() {
     previousObjectUrlRef.current = objectUrl;
     setAudioUrl(objectUrl);
     setAudioName(file.name);
-    setMessage(`${file.name} を音声ソースとして設定しました。`);
+    showToast(`${file.name} を音声ソースとして設定しました。`);
   };
 
   useEffect(() => {
@@ -175,13 +207,33 @@ export default function PresetManager() {
       if (previousObjectUrlRef.current?.startsWith("blob:")) {
         URL.revokeObjectURL(previousObjectUrlRef.current);
       }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
     };
   }, []);
 
   const audioQuery = audioUrl ? `?audio=${encodeURIComponent(audioUrl)}` : "";
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900 relative">
+      {/* 2秒自動消去 & 閉じるボタン付きトーストポップアップ */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl animate-in fade-in slide-in-from-top-2">
+          <span>{toastMessage}</span>
+          <button
+            type="button"
+            onClick={closeToast}
+            className="ml-2 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+            aria-label="閉じる"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:px-8">
         {/* 画面上部中央に独立配置された音声アップロードUI */}
         <div className="flex justify-center w-full">
@@ -212,7 +264,7 @@ export default function PresetManager() {
                   onClick={() => {
                     setEditingId(null);
                     setForm(initialForm);
-                    setMessage("新規作成モードに戻りました。");
+                    showToast("新規作成モードに戻りました。");
                   }}
                   className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                 >
@@ -305,6 +357,30 @@ export default function PresetManager() {
                   </select>
                 </label>
               </div>
+
+              {/* デザイン設定UI内に移植されたリアルタイムプレビュー */}
+              <div className="pt-2">
+                <span className="mb-2 block text-sm font-medium text-slate-700">デザインプレビュー</span>
+                <div className="rounded-none border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <span>リアルタイムプレビュー</span>
+                    <span>{form.graphType} / {form.effectType}</span>
+                  </div>
+                  <div className="mt-3 flex h-28 items-end gap-2 rounded-none bg-slate-100 p-4 border border-slate-200/60">
+                    {[24, 52, 37, 67, 44, 72].map((value, index) => (
+                      <div
+                        key={index}
+                        className="flex-1 transition-all duration-300"
+                        style={{
+                          height: `${value}%`,
+                          backgroundColor: form.lineColor,
+                          boxShadow: `0 2px 8px ${form.lineColor}40`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button
@@ -318,53 +394,56 @@ export default function PresetManager() {
 
           <aside className="flex flex-col gap-6">
             <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-sm font-medium text-slate-600">{message}</p>
-              <div className="mt-4 rounded-none border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <span>プレビュー</span>
-                  <span>{form.graphType}</span>
-                </div>
-                <div className="mt-3 flex h-28 items-end gap-2 rounded-none bg-slate-100 p-4 border border-slate-200/60">
-                  {[24, 52, 37, 67, 44, 72].map((value, index) => (
-                    <div
-                      key={index}
-                      className="flex-1 transition-all duration-300"
-                      style={{
-                        height: `${value}%`,
-                        backgroundColor: form.lineColor,
-                        boxShadow: `0 2px 8px ${form.lineColor}40`,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <h2 className="text-lg font-semibold text-slate-900">保存済みプリセット</h2>
-                <span className="rounded-none bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">{presets.length}件</span>
+                <span className="rounded-none bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  {!hasLoaded ? "..." : `${presets.length}件`}
+                </span>
               </div>
 
               <div className="mt-4 space-y-3">
-                {presets.length === 0 ? (
+                {!hasLoaded ? (
+                  <div className="flex items-center justify-center rounded-none border border-dashed border-slate-200 p-8 text-sm text-slate-500 gap-2">
+                    <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    <span>プリセットを読み込み中...</span>
+                  </div>
+                ) : presets.length === 0 ? (
                   <p className="rounded-none border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
                     まだプリセットはありません。最初の1つを保存してください。
                   </p>
                 ) : (
                   presets.map((preset) => (
-                    <article key={preset.id} className="rounded-none border border-slate-200 bg-slate-50/50 p-4 shadow-sm hover:border-slate-300 hover:bg-slate-50 transition">
+                    <article key={preset.id} className={`rounded-none border p-4 shadow-sm transition ${preset.isDefault ? "border-cyan-300 bg-cyan-50/70 hover:border-cyan-400" : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-slate-900">{preset.name}</h3>
                           <p className="mt-1 text-xs text-slate-400">
                             {new Date(preset.createdAt).toLocaleString("ja-JP")}
                           </p>
+                          {preset.isDefault ? (
+                            <span className="mt-2 inline-flex rounded-full border border-cyan-200 bg-cyan-100 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-700">
+                              デフォルト
+                            </span>
+                          ) : null}
                         </div>
-                        <div
-                          className="h-6 w-6 rounded-none border border-slate-200 shadow-inner"
-                          style={{ backgroundColor: preset.lineColor }}
-                        />
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePinPreset(preset.id)}
+                            className={`rounded-lg border px-2.5 py-2 text-xs font-medium transition ${preset.isDefault ? "border-cyan-300 bg-cyan-100 text-cyan-700 hover:bg-cyan-200" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                            aria-label={preset.isDefault ? `${preset.name} はデフォルト設定済み` : `${preset.name} をデフォルトに設定`}
+                            title={preset.isDefault ? "デフォルト設定済み" : "デフォルトに設定"}
+                          >
+                            📌
+                          </button>
+                          <div
+                            className="h-6 w-6 rounded-none border border-slate-200 shadow-inner"
+                            style={{ backgroundColor: preset.lineColor }}
+                          />
+                        </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
