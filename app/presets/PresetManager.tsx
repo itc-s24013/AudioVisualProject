@@ -1,0 +1,402 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, updatePresetInSupabase } from "./actions";
+
+interface PresetItem {
+  id: string;
+  name: string;
+  lineColor: string;
+  lineWidth: number;
+  graphType: string;
+  sensitivity: number;
+  effectType: string;
+  createdAt: string;
+}
+
+const STORAGE_KEY = "audio-visualizer-presets";
+
+const initialForm = {
+  name: "",
+  lineColor: "#3f3f46",
+  lineWidth: 4,
+  graphType: "bars",
+  sensitivity: 0.7,
+  effectType: "lens",
+};
+
+export default function PresetManager() {
+  const [presets, setPresets] = useState<PresetItem[]>([]);
+  const [form, setForm] = useState(initialForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [message, setMessage] = useState("プリセットを保存して、デザイン設定を管理できます。");
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [audioName, setAudioName] = useState("サンプル音声");
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const previousObjectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hasLoaded) return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+  }, [hasLoaded, presets]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved) as PresetItem[];
+            if (parsed.length > 0) {
+              setPresets(parsed);
+            }
+          } catch {
+            // 何もしない
+          }
+        }
+
+        const remotePresets = await loadPresetsFromSupabase();
+        setPresets(remotePresets);
+        if (remotePresets.length > 0) {
+          setMessage("Supabase から既存のプリセットを読み込みました。");
+        }
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "プリセットの読み込みに失敗しました。";
+        setMessage(text);
+      } finally {
+        setHasLoaded(true);
+      }
+    })();
+  }, []);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!form.name.trim()) {
+      setMessage("プリセット名を入力してください。");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const payload = {
+        id: editingId ?? undefined,
+        name: form.name.trim(),
+        lineColor: form.lineColor,
+        lineWidth: Number(form.lineWidth),
+        graphType: form.graphType,
+        sensitivity: Number(form.sensitivity),
+        effectType: form.effectType,
+      };
+
+      const nextPreset = editingId
+        ? await updatePresetInSupabase(payload)
+        : await savePresetToSupabase(payload);
+
+      setPresets((current) => {
+        if (editingId) {
+          return current.map((preset) => (preset.id === editingId ? nextPreset : preset));
+        }
+        return [nextPreset, ...current];
+      });
+
+      setMessage(editingId ? `${nextPreset.name} を更新しました。` : `${nextPreset.name} を保存しました。`);
+      setForm(initialForm);
+      setEditingId(null);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "保存に失敗しました。";
+      setMessage(text);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEdit = (preset: PresetItem) => {
+    setForm({
+      name: preset.name,
+      lineColor: preset.lineColor,
+      lineWidth: preset.lineWidth,
+      graphType: preset.graphType,
+      sensitivity: preset.sensitivity,
+      effectType: preset.effectType,
+    });
+    setEditingId(preset.id);
+    setMessage(`${preset.name} を編集中です。`);
+  };
+
+  const handleDelete = async (id: string) => {
+    const target = presets.find((preset) => preset.id === id);
+
+    try {
+      await deletePresetFromSupabase(id);
+      setPresets((current) => current.filter((preset) => preset.id !== id));
+      if (editingId === id) {
+        setEditingId(null);
+        setForm(initialForm);
+      }
+      setMessage(target ? `${target.name} を削除しました。` : "プリセットを削除しました。");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "削除に失敗しました。";
+      setMessage(text);
+    }
+  };
+
+  const handleAudioUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const isAudioType = file.type.startsWith("audio/");
+    const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac|wma|opus|aiff|alac)$/i.test(file.name);
+
+    if (!isAudioType && !isAudioExtension) {
+      event.target.value = "";
+      alert("音声ファイルをアップロードしてください");
+      setMessage("音声ファイルをアップロードしてください");
+      return;
+    }
+
+    if (previousObjectUrlRef.current?.startsWith("blob:")) {
+      URL.revokeObjectURL(previousObjectUrlRef.current);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    previousObjectUrlRef.current = objectUrl;
+    setAudioUrl(objectUrl);
+    setAudioName(file.name);
+    setMessage(`${file.name} を音声ソースとして設定しました。`);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previousObjectUrlRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(previousObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const audioQuery = audioUrl ? `?audio=${encodeURIComponent(audioUrl)}` : "";
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:px-8">
+        {/* 画面上部中央に独立配置された音声アップロードUI */}
+        <div className="flex justify-center w-full">
+          <div className="w-64 h-64 flex flex-col justify-between rounded-none border border-slate-200 bg-white p-5 text-left shadow-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">音声ソース</p>
+              <p className="mt-1.5 text-sm font-semibold text-slate-900 truncate">{audioName}</p>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              <label className="flex cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm">
+                <span>音声ファイルを選択</span>
+                <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" onChange={handleAudioUpload} className="hidden" />
+              </label>
+              <Link href={`/play${audioQuery}`} className="rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-slate-800 shadow-sm">
+                再生画面へ開く
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <form onSubmit={handleSubmit} className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">{editingId ? "プリセットを編集" : "新規プリセット"}</h2>
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm(initialForm);
+                    setMessage("新規作成モードに戻りました。");
+                  }}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  キャンセル
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-6 space-y-5">
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="mb-2 block">プリセット名</span>
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  placeholder="例: 夜の波形"
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="mb-2 block">ラインカラー</span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.lineColor}
+                    onChange={(event) => setForm((current) => ({ ...current, lineColor: event.target.value }))}
+                    className="h-12 w-20 cursor-pointer rounded-none border border-slate-200 bg-slate-50 p-1.5"
+                  />
+                  <input
+                    type="text"
+                    value={form.lineColor}
+                    onChange={(event) => setForm((current) => ({ ...current, lineColor: event.target.value }))}
+                    className="flex-1 rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400 font-mono text-sm uppercase"
+                  />
+                </div>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">線の太さ</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={form.lineWidth}
+                    onChange={(event) => setForm((current) => ({ ...current, lineWidth: Number(event.target.value) }))}
+                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  />
+                </label>
+
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">感度</span>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1"
+                    step="0.1"
+                    value={form.sensitivity}
+                    onChange={(event) => setForm((current) => ({ ...current, sensitivity: Number(event.target.value) }))}
+                    className="mt-3 w-full accent-slate-900"
+                  />
+                  <div className="mt-1 text-xs text-slate-500">{form.sensitivity.toFixed(1)}</div>
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">グラフタイプ</span>
+                  <select
+                    value={form.graphType}
+                    onChange={(event) => setForm((current) => ({ ...current, graphType: event.target.value }))}
+                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  >
+                    <option value="bars">バー</option>
+                    <option value="line">ライン</option>
+                    <option value="stack">スタック</option>
+                  </select>
+                </label>
+
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">エフェクト</span>
+                  <select
+                    value={form.effectType}
+                    onChange={(event) => setForm((current) => ({ ...current, effectType: event.target.value }))}
+                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  >
+                    <option value="lens">レンズ</option>
+                    <option value="glow">グロー</option>
+                    <option value="none">なし</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="mt-6 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 shadow-sm"
+            >
+              {isSaving ? "保存中..." : editingId ? "更新する" : "保存する"}
+            </button>
+          </form>
+
+          <aside className="flex flex-col gap-6">
+            <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
+              <p className="text-sm font-medium text-slate-600">{message}</p>
+              <div className="mt-4 rounded-none border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <span>プレビュー</span>
+                  <span>{form.graphType}</span>
+                </div>
+                <div className="mt-3 flex h-28 items-end gap-2 rounded-none bg-slate-100 p-4 border border-slate-200/60">
+                  {[24, 52, 37, 67, 44, 72].map((value, index) => (
+                    <div
+                      key={index}
+                      className="flex-1 transition-all duration-300"
+                      style={{
+                        height: `${value}%`,
+                        backgroundColor: form.lineColor,
+                        boxShadow: `0 2px 8px ${form.lineColor}40`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <h2 className="text-lg font-semibold text-slate-900">保存済みプリセット</h2>
+                <span className="rounded-none bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">{presets.length}件</span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {presets.length === 0 ? (
+                  <p className="rounded-none border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                    まだプリセットはありません。最初の1つを保存してください。
+                  </p>
+                ) : (
+                  presets.map((preset) => (
+                    <article key={preset.id} className="rounded-none border border-slate-200 bg-slate-50/50 p-4 shadow-sm hover:border-slate-300 hover:bg-slate-50 transition">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{preset.name}</h3>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {new Date(preset.createdAt).toLocaleString("ja-JP")}
+                          </p>
+                        </div>
+                        <div
+                          className="h-6 w-6 rounded-none border border-slate-200 shadow-inner"
+                          style={{ backgroundColor: preset.lineColor }}
+                        />
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(preset)}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
+                        >
+                          編集
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(preset.id)}
+                          className="flex-1 rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-100/70 shadow-sm"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+  );
+}

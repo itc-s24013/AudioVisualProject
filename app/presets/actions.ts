@@ -1,0 +1,189 @@
+"use server";
+
+import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
+
+export interface PresetPayload {
+  id?: string;
+  name: string;
+  lineColor: string;
+  lineWidth: number;
+  graphType: string;
+  sensitivity: number;
+  effectType: string;
+}
+
+export interface PresetRecord {
+  id: string;
+  name: string;
+  lineColor: string;
+  lineWidth: number;
+  graphType: string;
+  sensitivity: number;
+  effectType: string;
+  createdAt: string;
+}
+
+async function getAuthedUserId() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user) {
+    throw new Error("ログインが必要です。まずログインしてください。")
+  }
+
+  return data.user.id;
+}
+
+function formatPreset(preset: {
+  id: string;
+  name: string;
+  createdAt: Date;
+  settings?: unknown;
+  designSetting?: {
+    lineColor?: string;
+    lineWidth?: number;
+    graphType?: string;
+    sensitivity?: number;
+    effectType?: string;
+  } | null;
+}): PresetRecord {
+  const settings = (preset.settings as Record<string, unknown> | null) ?? {};
+  const design = preset.designSetting;
+
+  return {
+    id: preset.id,
+    name: preset.name,
+    lineColor: (design?.lineColor ?? (settings.lineColor as string | undefined) ?? "#7dd3fc"),
+    lineWidth: Number(design?.lineWidth ?? (settings.lineWidth as number | undefined) ?? 4),
+    graphType: String(design?.graphType ?? (settings.graphType as string | undefined) ?? "bars"),
+    sensitivity: Number(design?.sensitivity ?? (settings.sensitivity as number | undefined) ?? 0.7),
+    effectType: String(design?.effectType ?? (settings.effectType as string | undefined) ?? "lens"),
+    createdAt: preset.createdAt.toISOString(),
+  };
+}
+
+export async function loadPresetsFromSupabase(): Promise<PresetRecord[]> {
+  const userId = await getAuthedUserId();
+
+  const presets = await prisma.preset.findMany({
+    where: {
+      userId,
+      isDeleted: false,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      designSetting: true,
+    },
+  });
+
+  return presets.map(formatPreset);
+}
+
+export async function savePresetToSupabase(payload: PresetPayload): Promise<PresetRecord> {
+  const userId = await getAuthedUserId();
+
+  const preset = await prisma.preset.create({
+    data: {
+      userId,
+      name: payload.name,
+      settings: {
+        lineColor: payload.lineColor,
+        lineWidth: payload.lineWidth,
+        graphType: payload.graphType,
+        sensitivity: payload.sensitivity,
+        effectType: payload.effectType,
+      },
+      designSetting: {
+        create: {
+          lineColor: payload.lineColor,
+          lineWidth: payload.lineWidth,
+          graphType: payload.graphType,
+          sensitivity: payload.sensitivity,
+          effectType: payload.effectType,
+        },
+      },
+    },
+    include: {
+      designSetting: true,
+    },
+  });
+
+  return formatPreset(preset);
+}
+
+export async function updatePresetInSupabase(payload: PresetPayload): Promise<PresetRecord> {
+  if (!payload.id) {
+    throw new Error("更新対象の ID がありません。")
+  }
+
+  const userId = await getAuthedUserId();
+
+  const existingPreset = await prisma.preset.findFirst({
+    where: {
+      id: payload.id,
+      userId,
+      isDeleted: false,
+    },
+  });
+
+  if (!existingPreset) {
+    throw new Error("対象のプリセットが見つかりませんでした。")
+  }
+
+  const preset = await prisma.preset.update({
+    where: {
+      id: payload.id,
+    },
+    data: {
+      name: payload.name,
+      settings: {
+        lineColor: payload.lineColor,
+        lineWidth: payload.lineWidth,
+        graphType: payload.graphType,
+        sensitivity: payload.sensitivity,
+        effectType: payload.effectType,
+      },
+      designSetting: {
+        upsert: {
+          create: {
+            lineColor: payload.lineColor,
+            lineWidth: payload.lineWidth,
+            graphType: payload.graphType,
+            sensitivity: payload.sensitivity,
+            effectType: payload.effectType,
+          },
+          update: {
+            lineColor: payload.lineColor,
+            lineWidth: payload.lineWidth,
+            graphType: payload.graphType,
+            sensitivity: payload.sensitivity,
+            effectType: payload.effectType,
+          },
+        },
+      },
+    },
+    include: {
+      designSetting: true,
+    },
+  });
+
+  return formatPreset(preset);
+}
+
+export async function deletePresetFromSupabase(id: string): Promise<void> {
+  const userId = await getAuthedUserId();
+
+  await prisma.preset.updateMany({
+    where: {
+      id,
+      userId,
+      isDeleted: false,
+    },
+    data: {
+      isDeleted: true,
+    },
+  });
+}
