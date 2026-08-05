@@ -422,6 +422,7 @@ export default function PresetManager() {
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col">
             <div className="space-y-5">
+              <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900">デザインパネル</h2>
               <label className="block text-sm font-medium text-slate-700">
                 <span className="mb-2 block">プリセット名</span>
                 <input
