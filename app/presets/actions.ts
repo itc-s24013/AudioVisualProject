@@ -21,6 +21,7 @@ export interface PresetRecord {
   graphType: string;
   sensitivity: number;
   effectType: string;
+  isDefault: boolean;
   createdAt: string;
 }
 
@@ -38,6 +39,7 @@ async function getAuthedUserId() {
 function formatPreset(preset: {
   id: string;
   name: string;
+  isDefault: boolean;
   createdAt: Date;
   settings?: unknown;
   designSetting?: {
@@ -59,6 +61,7 @@ function formatPreset(preset: {
     graphType: String(design?.graphType ?? (settings.graphType as string | undefined) ?? "bars"),
     sensitivity: Number(design?.sensitivity ?? (settings.sensitivity as number | undefined) ?? 0.7),
     effectType: String(design?.effectType ?? (settings.effectType as string | undefined) ?? "lens"),
+    isDefault: preset.isDefault,
     createdAt: preset.createdAt.toISOString(),
   };
 }
@@ -89,6 +92,7 @@ export async function savePresetToSupabase(payload: PresetPayload): Promise<Pres
     data: {
       userId,
       name: payload.name,
+      isDefault: false,
       settings: {
         lineColor: payload.lineColor,
         lineWidth: payload.lineWidth,
@@ -176,6 +180,25 @@ export async function updatePresetInSupabase(payload: PresetPayload): Promise<Pr
 export async function deletePresetFromSupabase(id: string): Promise<void> {
   const userId = await getAuthedUserId();
 
+  const targetPreset = await prisma.preset.findFirst({
+    where: {
+      id,
+      userId,
+      isDeleted: false,
+    },
+    select: {
+      isDefault: true,
+    },
+  });
+
+  if (!targetPreset) {
+    return;
+  }
+
+  if (targetPreset.isDefault) {
+    throw new Error("デフォルト設定のプリセットは削除できません。")
+  }
+
   await prisma.preset.updateMany({
     where: {
       id,
@@ -186,4 +209,46 @@ export async function deletePresetFromSupabase(id: string): Promise<void> {
       isDeleted: true,
     },
   });
+}
+
+export async function setDefaultPresetInSupabase(id: string): Promise<PresetRecord> {
+  const userId = await getAuthedUserId();
+
+  const targetPreset = await prisma.preset.findFirst({
+    where: {
+      id,
+      userId,
+      isDeleted: false,
+    },
+  });
+
+  if (!targetPreset) {
+    throw new Error("対象のプリセットが見つかりませんでした。")
+  }
+
+  const preset = await prisma.$transaction(async (tx) => {
+    await tx.preset.updateMany({
+      where: {
+        userId,
+        isDeleted: false,
+      },
+      data: {
+        isDefault: false,
+      },
+    });
+
+    return tx.preset.update({
+      where: {
+        id,
+      },
+      data: {
+        isDefault: true,
+      },
+      include: {
+        designSetting: true,
+      },
+    });
+  });
+
+  return formatPreset(preset);
 }

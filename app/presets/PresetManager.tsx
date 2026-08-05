@@ -147,6 +147,11 @@ export default function PresetManager() {
   const handleDelete = async (id: string) => {
     const target = presets.find((preset) => preset.id === id);
 
+    if (target?.isDefault) {
+      showToast("デフォルト設定のプリセットは削除できません。");
+      return;
+    }
+
     try {
       await deletePresetFromSupabase(id);
       setPresets((current) => current.filter((preset) => preset.id !== id));
@@ -217,7 +222,6 @@ export default function PresetManager() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
-      {/* 2秒自動消去 & 閉じるボタン付きトーストポップアップ */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl animate-in fade-in slide-in-from-top-2">
           <span>{toastMessage}</span>
@@ -234,8 +238,7 @@ export default function PresetManager() {
         </div>
       )}
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:px-8">
-        {/* 画面上部中央に独立配置された音声アップロードUI */}
+      <main className="flex w-full flex-col gap-8 px-6 py-10 lg:px-8 lg:pr-[30rem]">
         <div className="flex justify-center w-full">
           <div className="w-64 h-64 flex flex-col justify-between rounded-none border border-slate-200 bg-white p-5 text-left shadow-sm">
             <div>
@@ -254,26 +257,108 @@ export default function PresetManager() {
           </div>
         </div>
 
-        <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-          <form onSubmit={handleSubmit} className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="space-y-8">
+          <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h2 className="text-lg font-semibold text-slate-900">{editingId ? "プリセットを編集" : "新規プリセット"}</h2>
-              {editingId ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingId(null);
-                    setForm(initialForm);
-                    showToast("新規作成モードに戻りました。");
-                  }}
-                  className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                >
-                  キャンセル
-                </button>
-              ) : null}
+              <h2 className="text-lg font-semibold text-slate-900">保存済みプリセット</h2>
+              <span className="rounded-none bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                {!hasLoaded ? "..." : `${presets.length}件`}
+              </span>
             </div>
 
-            <div className="mt-6 space-y-5">
+            <div className="mt-4 flex flex-wrap gap-4 items-start">
+              {!hasLoaded ? (
+                <div className="flex w-full items-center justify-center rounded-none border border-dashed border-slate-200 p-8 text-sm text-slate-500 gap-2">
+                  <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  <span>プリセットを読み込み中...</span>
+                </div>
+              ) : presets.length === 0 ? (
+                <p className="w-full rounded-none border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                  まだプリセットはありません。最初の1つを保存してください。
+                </p>
+              ) : (
+                presets.map((preset) => (
+                  <article key={preset.id} className={`flex h-[12rem] w-[17rem] flex-none flex-col rounded-none p-4 shadow-sm transition ${preset.isDefault ? "border-2 border-slate-900 bg-white hover:border-slate-900" : "border border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{preset.name}</h3>
+                        <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
+                        {preset.isDefault ? (
+                          <span className="mt-2 inline-flex rounded-full border-2 border-slate-900 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-900">
+                            デフォルト
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePinPreset(preset.id)}
+                          className={`rounded-lg px-2.5 py-2 text-xs font-medium transition ${preset.isDefault ? "border-2 border-slate-900 bg-white text-slate-900 hover:bg-slate-100" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                          aria-label={preset.isDefault ? `${preset.name} はデフォルト設定済み` : `${preset.name} をデフォルトに設定`}
+                          title={preset.isDefault ? "デフォルト設定済み" : "デフォルトに設定"}
+                        >
+                          📌
+                        </button>
+                        <div className="h-6 w-6 rounded-none border border-slate-200 shadow-inner" style={{ backgroundColor: preset.lineColor }} />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
+                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
+                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(preset)}
+                        className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
+                      >
+                        編集
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(preset.id)}
+                        disabled={preset.isDefault}
+                        className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition ${preset.isDefault ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400" : "border border-rose-200 bg-rose-50/50 text-rose-600 hover:bg-rose-100/70"}`}
+                        title={preset.isDefault ? "デフォルト設定のプリセットは削除できません" : "削除"}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside className="mt-8 w-full px-6 pb-10 lg:px-8 lg:pr-[30rem]">
+        <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm lg:fixed lg:right-6 lg:top-6 lg:bottom-6 lg:z-30 lg:w-[26rem] lg:overflow-y-auto lg:shadow-xl lg:shadow-slate-200/70">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <h2 className="text-lg font-semibold text-slate-900">デザイン設定パネル</h2>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setForm(initialForm);
+                  showToast("新規作成モードに戻りました。");
+                }}
+                className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              >
+                キャンセル
+              </button>
+            ) : null}
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-6 flex flex-col">
+            <div className="space-y-5">
               <label className="block text-sm font-medium text-slate-700">
                 <span className="mb-2 block">プリセット名</span>
                 <input
@@ -297,7 +382,7 @@ export default function PresetManager() {
                     type="text"
                     value={form.lineColor}
                     onChange={(event) => setForm((current) => ({ ...current, lineColor: event.target.value }))}
-                    className="flex-1 rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400 font-mono text-sm uppercase"
+                    className="flex-1 rounded-none border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm uppercase text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
                   />
                 </div>
               </label>
@@ -358,7 +443,6 @@ export default function PresetManager() {
                 </label>
               </div>
 
-              {/* デザイン設定UI内に移植されたリアルタイムプレビュー */}
               <div className="pt-2">
                 <span className="mb-2 block text-sm font-medium text-slate-700">デザインプレビュー</span>
                 <div className="rounded-none border border-slate-200 bg-slate-50 p-4">
@@ -366,7 +450,7 @@ export default function PresetManager() {
                     <span>リアルタイムプレビュー</span>
                     <span>{form.graphType} / {form.effectType}</span>
                   </div>
-                  <div className="mt-3 flex h-28 items-end gap-2 rounded-none bg-slate-100 p-4 border border-slate-200/60">
+                  <div className="mt-3 flex h-28 items-end gap-2 rounded-none border border-slate-200/60 bg-slate-100 p-4">
                     {[24, 52, 37, 67, 44, 72].map((value, index) => (
                       <div
                         key={index}
@@ -391,91 +475,8 @@ export default function PresetManager() {
               {isSaving ? "保存中..." : editingId ? "更新する" : "保存する"}
             </button>
           </form>
-
-          <aside className="flex flex-col gap-6">
-            <div className="rounded-none border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <h2 className="text-lg font-semibold text-slate-900">保存済みプリセット</h2>
-                <span className="rounded-none bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                  {!hasLoaded ? "..." : `${presets.length}件`}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {!hasLoaded ? (
-                  <div className="flex items-center justify-center rounded-none border border-dashed border-slate-200 p-8 text-sm text-slate-500 gap-2">
-                    <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    <span>プリセットを読み込み中...</span>
-                  </div>
-                ) : presets.length === 0 ? (
-                  <p className="rounded-none border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
-                    まだプリセットはありません。最初の1つを保存してください。
-                  </p>
-                ) : (
-                  presets.map((preset) => (
-                    <article key={preset.id} className={`rounded-none border p-4 shadow-sm transition ${preset.isDefault ? "border-cyan-300 bg-cyan-50/70 hover:border-cyan-400" : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50"}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-slate-900">{preset.name}</h3>
-                          <p className="mt-1 text-xs text-slate-400">
-                            {new Date(preset.createdAt).toLocaleString("ja-JP")}
-                          </p>
-                          {preset.isDefault ? (
-                            <span className="mt-2 inline-flex rounded-full border border-cyan-200 bg-cyan-100 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-700">
-                              デフォルト
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handlePinPreset(preset.id)}
-                            className={`rounded-lg border px-2.5 py-2 text-xs font-medium transition ${preset.isDefault ? "border-cyan-300 bg-cyan-100 text-cyan-700 hover:bg-cyan-200" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
-                            aria-label={preset.isDefault ? `${preset.name} はデフォルト設定済み` : `${preset.name} をデフォルトに設定`}
-                            title={preset.isDefault ? "デフォルト設定済み" : "デフォルトに設定"}
-                          >
-                            📌
-                          </button>
-                          <div
-                            className="h-6 w-6 rounded-none border border-slate-200 shadow-inner"
-                            style={{ backgroundColor: preset.lineColor }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
-                      </div>
-
-                      <div className="mt-4 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(preset)}
-                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
-                        >
-                          編集
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(preset.id)}
-                          className="flex-1 rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-100/70 shadow-sm"
-                        >
-                          削除
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                )}
-              </div>
-            </div>
-          </aside>
-        </section>
-      </main>
+        </div>
+      </aside>
     </div>
   );
 }
