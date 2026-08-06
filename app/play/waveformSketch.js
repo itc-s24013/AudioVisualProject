@@ -1,4 +1,4 @@
-export function sketch(p)
+export function sketch(p, audioSrc)
 {
     // canvas
     const W = 1920;
@@ -88,9 +88,9 @@ export function sketch(p)
                 `;
 
 
-    function setupAudio()
+    function setupAudio(src)
     {
-        audio_el = new Audio("/play/assets/song.mp3");
+        audio_el = new Audio(src || "/play/assets/song.mp3");
         audio_ctx = new AudioContext();
 
         an_freq = audio_ctx.createAnalyser();
@@ -127,7 +127,7 @@ export function sketch(p)
 
     p.setup = async () => 
     {
-        setupAudio();
+        setupAudio(audioSrc);
 
         p.frameRate(30);
 
