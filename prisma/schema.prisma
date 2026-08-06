@@ -13,7 +13,7 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
+  id           String    @default(uuid()) @id @db.Uuid
   email        String    @unique
   username     String
   isLoggedIn   Boolean   @default(false) @map("is_logged_in")
@@ -27,8 +27,8 @@ model User {
 }
 
 model Preset {
-  id             String    @id @default(uuid())
-  userId         String    @map("user_id")
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid @map("user_id")
   name           String
   settings       Json
   isDefault      Boolean   @default(false) @map("is_default")
@@ -44,7 +44,7 @@ model Preset {
 
 model DesignSetting {
   id             String   @id @default(uuid())
-  presetId       String   @unique @map("preset_id")
+  presetId       String   @unique @map("preset_id") @db.Uuid
   lineColor      String   @map("line_color")
   lineWidth      Int      @map("line_width")
   graphType      String   @map("graph_type")
