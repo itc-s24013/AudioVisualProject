@@ -15,14 +15,16 @@ export interface CurrentAccountInfo {
 }
 
 async function getAppUrl() {
+  // Vercel では、誤って localhost が設定された環境変数よりも
+  // 本番の公開 URL を優先する。
+  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production") {
+    return PRODUCTION_APP_URL;
+  }
+
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 
   if (configuredUrl) {
     return new URL(configuredUrl).origin;
-  }
-
-  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
-    return PRODUCTION_APP_URL;
   }
 
   const requestHeaders = await headers();
@@ -45,7 +47,7 @@ export async function signInWithGoogle() {
     const { data } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${await getAppUrl()}/auth/callback`,
+          redirectTo: new URL("/auth/callback", await getAppUrl()).toString(),
         },
       })
       
