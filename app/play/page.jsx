@@ -1,12 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { sketch } from './waveformSketch.js';
 import styles from './page.module.css';
 import { useAudioFile } from '@/app/context/AudioFileProvider';
 import { useDesignSettings } from '@/app/context/DesignSettingProvider';
 
 export default function Play() {
+    const router = useRouter();
     const containerRef = useRef(null);
     const playbackControllerRef = useRef(null);
     const { audioFile } = useAudioFile();
@@ -70,6 +72,21 @@ export default function Play() {
                     プリセット画面で音声ファイルを選択してから開くと、その音声が流れます。
                 </p>
             )}
+            <button
+                type="button"
+                onClick={() => router.back()}
+                aria-label="前の画面に戻る"
+                style={{
+                    position: 'fixed',
+                    top: '24px',
+                    left: '24px',
+                    zIndex: 2,
+                    padding: 0,
+                    lineHeight: 0,
+                }}
+            >
+                <Image src="/back.png" alt="" width={48} height={48} />
+            </button>
             <button
                 type="button"
                 onClick={togglePlayback}
