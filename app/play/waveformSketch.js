@@ -1,5 +1,19 @@
-export function sketch(p, audioSrc)
+export function sketch(p, audioSrc, designSettings)
 {
+    // /presets で選択されたデザイン設定(未指定時はデフォルト値にフォールバック)
+    const design = {
+        lineColor: "#dcf0f0",
+        lineWidth: 4,
+        graphType: "bars",
+        sensitivity: 0.7,
+        effectType: "lens",
+        ...(designSettings || {}),
+    };
+    // lineColorから作ったRGB成分(setup内で計算する)
+    let design_r = 255;
+    let design_g = 255;
+    let design_b = 255;
+
     // canvas
     const W = 1920;
     const H = 1080;
@@ -161,6 +175,12 @@ export function sketch(p, audioSrc)
         col_grid = p.color(100);
         col_graph = p.color(220, 240, 240);
 
+        // デザイン設定のlineColorをRGB成分に分解しておく(波形の色に使う)
+        const designColor = p.color(design.lineColor);
+        design_r = p.red(designColor);
+        design_g = p.green(designColor);
+        design_b = p.blue(designColor);
+
         // text setup
         // let f = await loadFont('../assets/fonts/Liter/Liter-Regular.ttf')
         let f = await p.loadFont('/play/assets/Oswald-Regular.ttf')
@@ -187,16 +207,19 @@ export function sketch(p, audioSrc)
         let top_y = H - wave_height - wave_pos_y;
         let bottom_y = H - wave_pos_y;
 
+        // design.lineWidth(初期値4)を基準にしたグリッド線太さの倍率
+        const gridWeightScale = design.lineWidth / 4;
+
         p.push();
         p.translate((W - LINE_WIDTH) / 2, 0);
 
         p.stroke(col_grid);
         // 一番下の線
-        p.strokeWeight(5);
+        p.strokeWeight(5 * gridWeightScale);
         p.line(0, bottom_y, LINE_WIDTH, bottom_y);
 
         // 一番上の線
-        p.strokeWeight(2);
+        p.strokeWeight(2 * gridWeightScale);
         p.line(0, top_y, LINE_WIDTH, top_y);
 
 
@@ -240,6 +263,93 @@ export function sketch(p, audioSrc)
     let prev_data = null;
     let boosts = null;
     let br = null;
+
+    // 1本あたりの高さ(design.sensitivityで感度を調整し、design.effectTypeに関わらず範囲内に収める)
+    function mappedHeight(value) {
+        const h = p.map(value, 0, 255, 0, wave_height) * design.sensitivity;
+        return p.constrain(h, 0, wave_height);
+    }
+
+    // 明るさの数値(br[x], 0〜100)を、design.lineColorを基調にしたRGBカラーに変換
+    function graphColor(brightness) {
+        const factor = brightness / 100;
+        return p.color(design_r * factor, design_g * factor, design_b * factor);
+    }
+
+    // ビンの番号に対応するパーセンテージ表示(全グラフ種別で共通)
+    function drawPercentLabel(x, total_w, value, brightness) {
+        p.push();
+        p.colorMode(p.HSB);
+        p.noStroke();
+        p.fill(p.color(0, 0, brightness));
+        p.text(
+            Math.round(p.map(value, 0, 255, 0, 100)),
+            total_w * x + total_w / 2, H + bottom_text_pos_y
+        );
+        p.pop();
+    }
+
+    // グラフ種別: バー(design.graphType === "bars")
+    function drawWaveformAsBars(graph_array, rect_w, total_w) {
+        for (let x = 0; x < graph_array.length; x++) {
+            const mapped = mappedHeight(graph_array[x]);
+
+            p.push();
+            p.colorMode(p.RGB, 255);
+            p.noStroke();
+            p.fill(graphColor(br[x]));
+            p.rect(
+                total_w * x + (rect_gap / 2),
+                H, rect_w, -mapped
+            );
+            p.pop();
+
+            drawPercentLabel(x, total_w, graph_array[x], br[x]);
+        }
+    }
+
+    // グラフ種別: ライン(design.graphType === "line")。バーの頂点を折れ線で結ぶ
+    function drawWaveformAsLine(graph_array, total_w) {
+        p.push();
+        p.colorMode(p.RGB, 255);
+        p.noFill();
+        p.stroke(design_r, design_g, design_b);
+        p.strokeWeight(design.lineWidth);
+        p.beginShape();
+        for (let x = 0; x < graph_array.length; x++) {
+            const mapped = mappedHeight(graph_array[x]);
+            p.vertex(total_w * x + total_w / 2, H - mapped);
+        }
+        p.endShape();
+        p.pop();
+
+        for (let x = 0; x < graph_array.length; x++) {
+            drawPercentLabel(x, total_w, graph_array[x], br[x]);
+        }
+    }
+
+    // グラフ種別: スタック(design.graphType === "stack")。中心線から上下に伸びる
+    function drawWaveformAsStack(graph_array, rect_w, total_w) {
+        const centerY = H - wave_height / 2;
+
+        for (let x = 0; x < graph_array.length; x++) {
+            const mapped = mappedHeight(graph_array[x]);
+            const half = mapped / 2;
+
+            p.push();
+            p.colorMode(p.RGB, 255);
+            p.noStroke();
+            p.fill(graphColor(br[x]));
+            p.rect(
+                total_w * x + (rect_gap / 2),
+                centerY - half, rect_w, mapped
+            );
+            p.pop();
+
+            drawPercentLabel(x, total_w, graph_array[x], br[x]);
+        }
+    }
+
     function drawWaveform()
     {
         const buffer_length = an_freq.frequencyBinCount;
@@ -273,30 +383,20 @@ export function sketch(p, audioSrc)
 
         prev_data.set(graph_array);
 
+        // design.lineWidth(初期値4)が大きいほどバーを太く(隙間を狭く)する
+        const effectiveGap = p.constrain(rect_gap - (design.lineWidth - 4), 2, rect_gap * 2);
+        let rect_w = (wave_width / an_freq_array.length) - effectiveGap;
+        let total_w = rect_w + effectiveGap;
 
-        let rect_w = (wave_width / an_freq_array.length) - rect_gap;
-
-        console.log(br);
-        // 棒グラフ描画
-        for(let x = 0; x < graph_array.length; x++) {
-            let mapped = p.map(graph_array[x], 0, 255, 0, wave_height);;
-            let total_w = rect_w + rect_gap;
-            // fill(col_graph);
-            p.push();
-            p.colorMode(p.HSB);
-            p.fill(p.color(0, 0, br[x]));
-            p.rect(
-                total_w * x + (rect_gap / 2), 
-                H, rect_w, -mapped
-            );
-            // fill(col_grid);
-            p.fill(p.color(0, 0, br[x]));
-            p.text(
-                Math.round(p.map(graph_array[x], 0, 255, 0, 100)),
-                total_w * x + total_w / 2, H + bottom_text_pos_y
-            );
-            p.pop();
+        if (design.graphType === "line") {
+            drawWaveformAsLine(graph_array, total_w);
+        } else if (design.graphType === "stack") {
+            drawWaveformAsStack(graph_array, rect_w, total_w);
+        } else {
+            // "bars"、および未知の値の場合はバー表示にフォールバック
+            drawWaveformAsBars(graph_array, rect_w, total_w);
         }
+
         p.pop();
     }
 
@@ -343,7 +443,15 @@ export function sketch(p, audioSrc)
 
         drawGrid();
 
-        p.filter(fx);
+        // デザイン設定のエフェクト種別に応じてポストエフェクトを切り替える
+        if (design.effectType === "glow") {
+            p.filter(p.BLUR, 4);
+        } else if (design.effectType === "none") {
+            // 何もしない(素の描画のまま)
+        } else {
+            // "lens"、および未知の値の場合は既存のレンズシェーダーにフォールバック
+            p.filter(fx);
+        }
     }
 
     function getBinCount(cutoffFreq, fftSize, sampleRate, marginRatio = 1) {

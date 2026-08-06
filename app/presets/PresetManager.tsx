@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { deleteCurrentAccount, getCurrentAccountInfo, signOut } from "../login/actions";
 import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, setDefaultPresetInSupabase, updatePresetInSupabase } from "./actions";
 import { useAudioFile } from "@/app/context/AudioFileProvider";
+import { useDesignSettings } from "@/app/context/DesignSettingProvider";
 
 interface PresetItem {
   id: string;
@@ -38,6 +39,8 @@ export default function PresetManager() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [audioName, setAudioName] = useState("サンプル音声");
   const { audioFile, setAudioFile } = useAudioFile();
+  const { setDesignSettings } = useDesignSettings();
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [accountName, setAccountName] = useState("読み込み中...");
   const [accountEmail, setAccountEmail] = useState("");
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
@@ -58,6 +61,26 @@ export default function PresetManager() {
       clearTimeout(toastTimerRef.current);
     }
     setToastMessage(null);
+  };
+
+  // 指定したプリセットのデザインを、/play での描画に使うContextへ反映する。
+  // silent: true の場合はトーストを出さない(初期表示時の自動選択などで使用)。
+  const applyDesign = (preset: PresetItem, options?: { silent?: boolean }) => {
+    setDesignSettings({
+      lineColor: preset.lineColor,
+      lineWidth: preset.lineWidth,
+      graphType: preset.graphType,
+      sensitivity: preset.sensitivity,
+      effectType: preset.effectType,
+    });
+    setSelectedPresetId(preset.id);
+    if (!options?.silent) {
+      showToast(`${preset.name} のデザインを再生に反映しました。`);
+    }
+  };
+
+  const handleSelectDesign = (preset: PresetItem) => {
+    applyDesign(preset);
   };
 
   useEffect(() => {
@@ -83,6 +106,13 @@ export default function PresetManager() {
 
         const remotePresets = await loadPresetsFromSupabase();
         setPresets(remotePresets);
+
+        // デフォルト設定のプリセットがあれば、初期表示時点でそのデザインを
+        // 再生用Contextに反映しておく(何も選択しないまま/playへ行っても反映されるように)
+        const defaultPreset = remotePresets.find((preset) => preset.isDefault);
+        if (defaultPreset) {
+          applyDesign(defaultPreset, { silent: true });
+        }
       } catch (error) {
         const text = error instanceof Error ? error.message : "読み込みに失敗しました。";
         showToast(text);
@@ -176,6 +206,9 @@ export default function PresetManager() {
         setEditingId(null);
         setForm(initialForm);
       }
+      if (selectedPresetId === id) {
+        setSelectedPresetId(null);
+      }
       showToast(target ? `${target.name} を削除しました。` : "プリセットを削除しました。");
     } catch (error) {
       const text = error instanceof Error ? error.message : "削除に失敗しました。";
@@ -192,6 +225,8 @@ export default function PresetManager() {
           isDefault: preset.id === pinnedPreset.id,
         }))
       );
+      // デフォルトにしたプリセットのデザインを、そのまま再生用にも反映する
+      applyDesign(pinnedPreset, { silent: true });
       showToast(`${pinnedPreset.name} をデフォルトに設定しました。`);
     } catch (error) {
       const text = error instanceof Error ? error.message : "デフォルト設定に失敗しました。";
@@ -304,58 +339,96 @@ export default function PresetManager() {
                   まだプリセットはありません。最初の1つを保存してください。
                 </p>
               ) : (
-                presets.map((preset) => (
-                  <article key={preset.id} className={`flex h-[12rem] w-[17rem] flex-none flex-col rounded-none p-4 shadow-sm transition ${preset.isDefault ? "border-2 border-slate-900 bg-white hover:border-slate-900" : "border border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50"}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{preset.name}</h3>
-                        <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
-                        {preset.isDefault ? (
-                          <span className="mt-2 inline-flex rounded-full border-2 border-slate-900 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-900">
-                            デフォルト
-                          </span>
-                        ) : null}
+                presets.map((preset) => {
+                  const isSelected = preset.id === selectedPresetId;
+                  return (
+                    <article
+                      key={preset.id}
+                      onClick={() => handleSelectDesign(preset)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleSelectDesign(preset);
+                        }
+                      }}
+                      title="クリックしてこのデザインを再生に反映"
+                      className={`flex h-[12rem] w-[17rem] flex-none cursor-pointer flex-col rounded-none p-4 shadow-sm transition ${
+                        isSelected
+                          ? "border-2 border-indigo-500 bg-indigo-50/40 hover:border-indigo-500"
+                          : preset.isDefault
+                            ? "border-2 border-slate-900 bg-white hover:border-slate-900"
+                            : "border border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{preset.name}</h3>
+                          <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {preset.isDefault ? (
+                              <span className="inline-flex rounded-full border-2 border-slate-900 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-900">
+                                デフォルト
+                              </span>
+                            ) : null}
+                            {isSelected ? (
+                              <span className="inline-flex rounded-full border-2 border-indigo-500 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600">
+                                再生に使用中
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePinPreset(preset.id);
+                            }}
+                            className={`rounded-lg px-2.5 py-2 text-xs font-medium transition ${preset.isDefault ? "border-2 border-slate-900 bg-white text-slate-900 hover:bg-slate-100" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                            aria-label={preset.isDefault ? `${preset.name} はデフォルト設定済み` : `${preset.name} をデフォルトに設定`}
+                            title={preset.isDefault ? "デフォルト設定済み" : "デフォルトに設定"}
+                          >
+                            📌
+                          </button>
+                          <div className="h-6 w-6 rounded-none border border-slate-200 shadow-inner" style={{ backgroundColor: preset.lineColor }} />
+                        </div>
                       </div>
-                      <div className="flex items-start gap-2">
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
+                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
                         <button
                           type="button"
-                          onClick={() => handlePinPreset(preset.id)}
-                          className={`rounded-lg px-2.5 py-2 text-xs font-medium transition ${preset.isDefault ? "border-2 border-slate-900 bg-white text-slate-900 hover:bg-slate-100" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
-                          aria-label={preset.isDefault ? `${preset.name} はデフォルト設定済み` : `${preset.name} をデフォルトに設定`}
-                          title={preset.isDefault ? "デフォルト設定済み" : "デフォルトに設定"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEdit(preset);
+                          }}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
                         >
-                          📌
+                          編集
                         </button>
-                        <div className="h-6 w-6 rounded-none border border-slate-200 shadow-inner" style={{ backgroundColor: preset.lineColor }} />
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(preset.id);
+                          }}
+                          disabled={preset.isDefault}
+                          className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition ${preset.isDefault ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400" : "border border-rose-200 bg-rose-50/50 text-rose-600 hover:bg-rose-100/70"}`}
+                          title={preset.isDefault ? "デフォルト設定のプリセットは削除できません" : "削除"}
+                        >
+                          削除
+                        </button>
                       </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
-                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
-                      <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
-                    </div>
-
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(preset)}
-                        className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
-                      >
-                        編集
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(preset.id)}
-                        disabled={preset.isDefault}
-                        className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition ${preset.isDefault ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400" : "border border-rose-200 bg-rose-50/50 text-rose-600 hover:bg-rose-100/70"}`}
-                        title={preset.isDefault ? "デフォルト設定のプリセットは削除できません" : "削除"}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </article>
-                ))
+                    </article>
+                  );
+                })
               )}
             </div>
           </div>

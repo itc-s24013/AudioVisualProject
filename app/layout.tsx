@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AudioFileProvider } from "@/app/context/AudioFileProvider";
+import { DesignSettingsProvider } from "@/app/context/DesignSettingProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,9 +30,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {/* /presets でアップロードした音声Fileを /play まで引き継ぐため、
-            アプリ全体をProviderで包む */}
-        <AudioFileProvider>{children}</AudioFileProvider>
+        {/* /presets でアップロードした音声File、選択したデザイン設定を
+            /play まで引き継ぐため、アプリ全体をProviderで包む */}
+        <AudioFileProvider>
+          <DesignSettingsProvider>{children}</DesignSettingsProvider>
+        </AudioFileProvider>
       </body>
     </html>
   );
