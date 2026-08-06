@@ -6,6 +6,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+const PRODUCTION_APP_URL = "https://audio-visual-project-chi.vercel.app";
+
 export interface CurrentAccountInfo {
   id: string;
   name: string;
@@ -19,6 +21,10 @@ async function getAppUrl() {
     return new URL(configuredUrl).origin;
   }
 
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    return PRODUCTION_APP_URL;
+  }
+
   const requestHeaders = await headers();
   const host =
     requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
@@ -29,10 +35,6 @@ async function getAppUrl() {
       (host.startsWith("localhost") ? "http" : "https");
 
     return `${protocol}://${host}`;
-  }
-
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
   }
 
   return "http://localhost:3000";
