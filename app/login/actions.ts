@@ -3,57 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-
-const PRODUCTION_APP_URL = "https://audio-visual-project-chi.vercel.app";
 
 export interface CurrentAccountInfo {
   id: string;
   name: string;
   email: string;
-}
-
-async function getAppUrl() {
-  // Vercel では、誤って localhost が設定された環境変数よりも
-  // 本番の公開 URL を優先する。
-  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production") {
-    return PRODUCTION_APP_URL;
-  }
-
-  const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-
-  if (configuredUrl) {
-    return new URL(configuredUrl).origin;
-  }
-
-  const requestHeaders = await headers();
-  const host =
-    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-
-  if (host) {
-    const protocol =
-      requestHeaders.get("x-forwarded-proto") ??
-      (host.startsWith("localhost") ? "http" : "https");
-
-    return `${protocol}://${host}`;
-  }
-
-  return "http://localhost:3000";
-}
-
-export async function signInWithGoogle() {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: new URL("/auth/callback", await getAppUrl()).toString(),
-        },
-      })
-      
-      if (data.url) {
-        redirect(data.url) // use the redirect API for your server framework
-      }
 }
 
 export async function signOut() {
