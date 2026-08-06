@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { deleteCurrentAccount, getCurrentAccountInfo, signOut } from "../login/actions";
 import { deletePresetFromSupabase, loadPresetsFromSupabase, savePresetToSupabase, setDefaultPresetInSupabase, updatePresetInSupabase } from "./actions";
+import { useAudioFile } from "@/app/context/AudioFileProvider";
 
 interface PresetItem {
   id: string;
@@ -36,11 +37,10 @@ export default function PresetManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [audioName, setAudioName] = useState("サンプル音声");
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const { audioFile, setAudioFile } = useAudioFile();
   const [accountName, setAccountName] = useState("読み込み中...");
   const [accountEmail, setAccountEmail] = useState("");
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
-  const previousObjectUrlRef = useRef<string | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (msg: string) => {
@@ -213,29 +213,22 @@ export default function PresetManager() {
       return;
     }
 
-    if (previousObjectUrlRef.current?.startsWith("blob:")) {
-      URL.revokeObjectURL(previousObjectUrlRef.current);
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-    previousObjectUrlRef.current = objectUrl;
-    setAudioUrl(objectUrl);
+    // URLではなくFileオブジェクトそのものを共有Contextに保存する。
+    // /play 側はこのFileから、自分のページの寿命に合わせてobject URLを作る。
+    setAudioFile(file);
     setAudioName(file.name);
     showToast(`${file.name} を音声ソースとして設定しました。`);
   };
 
   useEffect(() => {
+    // 音声Fileの管理・破棄は AudioFileProvider / /play 側が行うため、
+    // ここではトーストのタイマーだけ後片付けする。
     return () => {
-      if (previousObjectUrlRef.current?.startsWith("blob:")) {
-        URL.revokeObjectURL(previousObjectUrlRef.current);
-      }
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
       }
     };
   }, []);
-
-  const audioQuery = audioUrl ? `?audio=${encodeURIComponent(audioUrl)}` : "";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
@@ -267,9 +260,23 @@ export default function PresetManager() {
                 <span>音声ファイルを選択</span>
                 <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" onChange={handleAudioUpload} className="hidden" />
               </label>
-              <Link href={`/play${audioQuery}`} className="rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-slate-800 shadow-sm">
-                再生画面へ開く
-              </Link>
+              {audioFile ? (
+                <Link
+                  href="/play"
+                  className="rounded-xl bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-slate-800 shadow-sm"
+                >
+                  再生画面へ開く
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title="先に音声ファイルを選択してください"
+                  className="cursor-not-allowed rounded-xl bg-slate-300 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm"
+                >
+                  再生画面へ開く
+                </button>
+              )}
             </div>
           </div>
         </div>
