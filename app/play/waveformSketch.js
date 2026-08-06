@@ -1,4 +1,4 @@
-export function sketch(p, audioSrc, designSettings)
+export function sketch(p, audioSrc, designSettings, playback = {})
 {
     // /presets で選択されたデザイン設定(未指定時はデフォルト値にフォールバック)
     const design = {
@@ -139,6 +139,27 @@ export function sketch(p, audioSrc, designSettings)
         lowpass.connect(an_lowFreq);
     }
 
+    function setPlaying(playing) {
+        playback.onPlaybackChange?.(playing);
+    }
+
+    async function playAudio() {
+        if (audio_ctx.state === "suspended") {
+            await audio_ctx.resume();
+        }
+        await audio_el.play();
+        p.loop();
+    }
+
+    function pauseAudio() {
+        audio_el.pause();
+        p.noLoop();
+    }
+
+    function togglePlayback() {
+        return audio_el.paused ? playAudio() : pauseAudio();
+    }
+
     p.setup = async () => 
     {
         setupAudio(audioSrc);
@@ -147,12 +168,29 @@ export function sketch(p, audioSrc, designSettings)
 
         const cnv = p.createCanvas(W, H, p.WEBGL);
         cnv.mousePressed(() => {
-            console.log("pressed") 
-            if (audio_ctx.state == "suspended") {
-                audio_ctx.resume();
-            }
-            audio_el.play();
+            togglePlayback();
         });
+
+        audio_el.addEventListener("play", () => {
+            p.loop();
+            setPlaying(true);
+        });
+        audio_el.addEventListener("pause", () => {
+            p.noLoop();
+            setPlaying(false);
+        });
+
+        if (playback.controller) {
+            playback.controller.toggle = togglePlayback;
+            playback.controller.dispose = () => {
+                pauseAudio();
+                src?.disconnect();
+                lowpass?.disconnect();
+                an_freq?.disconnect();
+                an_lowFreq?.disconnect();
+                audio_ctx?.close();
+            };
+        }
 
         // camera
         cam = p.createCamera();
@@ -195,6 +233,10 @@ export function sketch(p, audioSrc, designSettings)
         fx.setUniform('fov', 1.8);        // お好みで調整
         fx.setUniform('aberration', 0.005);
         fx.setUniform('vignette', 0);
+
+        // 初期状態は停止。再生ボタンまたはキャンバスのクリックで開始する。
+        p.noLoop();
+        playback.onReady?.();
 
     }
 
