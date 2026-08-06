@@ -3,8 +3,9 @@
 import { useRef, useState } from "react";
 import AudioUploader from "./AudioUploader";
 import AudioControls from "./AudioControls";
-import Visualizer from "./Visualizer";
 import ProgressBar from "./ProgressBar";
+import NowPlaying from "./NowPlaying";
+// import Visualizer from "./Visualizer";
 
 export default function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -12,13 +13,19 @@ export default function AudioPlayer() {
   const [audioElement, setAudioElement] =
     useState<HTMLAudioElement | null>(null);
 
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [fileName, setFileName] =
+    useState("");
+
+  const [currentTime, setCurrentTime] =
+    useState(0);
+
+  const [duration, setDuration] =
+    useState(0);
 
   const handleFileChange = (file: File) => {
-    console.log("選択したファイル:", file);
-
     const url = URL.createObjectURL(file);
+
+    setFileName(file.name);
 
     if (audioRef.current) {
       audioRef.current.src = url;
@@ -26,23 +33,9 @@ export default function AudioPlayer() {
     }
   };
 
-const playAudio = async () => {
-  console.log("再生ボタンが押されました");
-
-  if (!audioRef.current) {
-    console.log("audioRef.current がありません");
-    return;
-  }
-
-  console.log("src:", audioRef.current.src);
-
-  try {
-    await audioRef.current.play();
-    console.log("再生成功");
-  } catch (error) {
-    console.error("再生エラー:", error);
-  }
-};
+  const playAudio = () => {
+    audioRef.current?.play();
+  };
 
   const stopAudio = () => {
     if (audioRef.current) {
@@ -61,16 +54,26 @@ const playAudio = async () => {
 
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8 rounded-xl bg-zinc-800 p-8 shadow-lg">
-      <Visualizer audio={audioElement} />
 
+      {/* Visualizer */}
+      {/* <Visualizer audio={audioElement} /> */}
+
+      {/* 再生中の曲 */}
+      <NowPlaying fileName={fileName} />
+
+      {/* プログレスバー */}
       <ProgressBar
         currentTime={currentTime}
         duration={duration}
         onSeek={seekAudio}
       />
 
-      <AudioUploader onFileSelect={handleFileChange} />
+      {/* ファイル選択 */}
+      <AudioUploader
+        onFileSelect={handleFileChange}
+      />
 
+      {/* 再生・停止ボタン */}
       <AudioControls
         onPlay={playAudio}
         onStop={stopAudio}
