@@ -2,21 +2,22 @@
 
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const PRODUCTION_ORIGIN = "https://audio-visual-project-chi.vercel.app";
 
 export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
+  const hasStartedAutoSignIn = useRef(false);
 
-  async function signInWithGoogle() {
+  const signInWithGoogle = useCallback(async () => {
     // Vercel のプレビュー URL で開始した OAuth は、本番 URL の callback と
     // Cookie を共有できない。認証開始前に本番ホストへそろえる。
     if (
       window.location.hostname.endsWith(".vercel.app") &&
       window.location.origin !== PRODUCTION_ORIGIN
     ) {
-      window.location.assign(`${PRODUCTION_ORIGIN}/login`);
+      window.location.assign(`${PRODUCTION_ORIGIN}/login?autoSignIn=1`);
       return;
     }
 
@@ -36,7 +37,20 @@ export default function LoginPage() {
     if (data.url) {
       window.location.assign(data.url);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (
+      hasStartedAutoSignIn.current ||
+      new URLSearchParams(window.location.search).get("autoSignIn") !== "1"
+    ) {
+      return;
+    }
+
+    hasStartedAutoSignIn.current = true;
+    window.history.replaceState(null, "", "/login");
+    void signInWithGoogle();
+  }, [signInWithGoogle]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4">
