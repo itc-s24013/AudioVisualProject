@@ -5,10 +5,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   // if "next" is in param, use it as the redirect URL
-  let next = searchParams.get("next") ?? "/";
+  let next = searchParams.get("next") ?? "/presets";
   if (!next.startsWith("/")) {
     // if "next" is not a relative URL, use the default
-    next = "/";
+    next = "/presets";
   }
 
   if (code) {
