@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import Image from "next/image";
 import { useState } from "react";
 
 const PRODUCTION_ORIGIN = "https://audio-visual-project-chi.vercel.app";
@@ -38,9 +39,13 @@ export default function LoginPage() {
   }
 
   return (
-    <main>
-      <button type="button" onClick={signInWithGoogle}>
-        ログイン
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4">
+      <button
+        type="button"
+        onClick={signInWithGoogle}
+        aria-label="Google でログイン"
+      >
+        <Image src="/google_icon.png" alt="" width={540} height={120} />
       </button>
       {errorMessage && <p role="alert">{errorMessage}</p>}
     </main>
