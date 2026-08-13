@@ -30,6 +30,87 @@ const initialForm = {
   effectType: "lens",
 };
 
+const previewValues = [24, 52, 37, 67, 44, 72];
+
+function DesignPreview({
+  lineColor,
+  lineWidth,
+  graphType,
+}: Pick<PresetItem, "lineColor" | "lineWidth" | "graphType">) {
+  const barGap = Math.max(2, 14 - lineWidth);
+
+  if (graphType === "line") {
+    const points = previewValues
+      .map((value, index) => {
+        const x = (index / (previewValues.length - 1)) * 100;
+        return `${x},${100 - value}`;
+      })
+      .join(" ");
+
+    return (
+      <svg
+        className="h-full w-full overflow-visible"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-label="ラインのプレビュー"
+      >
+        <polyline
+          points={points}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth={lineWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <div className="flex h-full items-end" style={{ gap: `${barGap}px` }}>
+      {previewValues.map((value, index) => {
+        const height = graphType === "stack" ? value / 2 : value;
+
+        return (
+          <div
+            key={index}
+            className={
+              graphType === "stack"
+                ? "relative h-full flex-1"
+                : "flex-1 self-end transition-all duration-300"
+            }
+            style={graphType === "stack" ? undefined : { height: `${height}%` }}
+          >
+            <div
+              className={
+                graphType === "stack"
+                  ? "absolute bottom-1/2 w-full transition-all duration-300"
+                  : "h-full w-full"
+              }
+              style={{
+                height: `${height}%`,
+                backgroundColor: lineColor,
+                boxShadow: `0 2px 8px ${lineColor}40`,
+              }}
+            />
+            {graphType === "stack" ? (
+              <div
+                className="absolute top-1/2 w-full transition-all duration-300"
+                style={{
+                  height: `${height}%`,
+                  backgroundColor: lineColor,
+                  boxShadow: `0 2px 8px ${lineColor}40`,
+                }}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PresetManager() {
   const [presets, setPresets] = useState<PresetItem[]>([]);
   const [form, setForm] = useState(initialForm);
@@ -590,17 +671,11 @@ export default function PresetManager() {
                     <span>{form.graphType} / {form.effectType}</span>
                   </div>
                   <div className="mt-3 flex h-28 items-end gap-2 rounded-none border border-slate-200/60 bg-slate-100 p-4">
-                    {[24, 52, 37, 67, 44, 72].map((value, index) => (
-                      <div
-                        key={index}
-                        className="flex-1 transition-all duration-300"
-                        style={{
-                          height: `${value}%`,
-                          backgroundColor: form.lineColor,
-                          boxShadow: `0 2px 8px ${form.lineColor}40`,
-                        }}
-                      />
-                    ))}
+                    <DesignPreview
+                      lineColor={form.lineColor}
+                      lineWidth={form.lineWidth}
+                      graphType={form.graphType}
+                    />
                   </div>
                 </div>
               </div>
