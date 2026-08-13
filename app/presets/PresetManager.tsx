@@ -463,8 +463,8 @@ export default function PresetManager() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-slate-900">{preset.name}</h3>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-semibold text-slate-900" title={preset.name}>{preset.name}</h3>
                           <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {isSelected ? (
