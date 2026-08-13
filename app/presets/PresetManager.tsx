@@ -41,11 +41,11 @@ function DesignPreview({
   const barGap = Math.max(2, 14 - lineWidth);
   const isGlow = effectType === "glow";
   const previewFilter = isGlow ? "blur(4px)" : undefined;
-  const previewShadow = isGlow
-    ? `0 0 12px ${lineColor}, 0 0 24px ${lineColor}80`
+  const elementFilter = isGlow
+    ? `drop-shadow(0 0 12px ${lineColor}) drop-shadow(0 0 24px ${lineColor}80)`
     : effectType === "none"
-      ? "none"
-      : `0 2px 8px ${lineColor}40`;
+      ? undefined
+      : `drop-shadow(0 2px 4px ${lineColor}40)`;
 
   if (graphType === "line") {
     const points = previewValues
@@ -77,48 +77,56 @@ function DesignPreview({
   }
 
   return (
-    <div className="flex h-full items-end" style={{ gap: `${barGap}px` }}>
+    <svg
+      className="h-full w-full overflow-visible"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-label={graphType === "stack" ? "スタックのプレビュー" : "バーのプレビュー"}
+      style={{ filter: previewFilter }}
+    >
+      {graphType === "stack" ? <line x1="0" y1="50" x2="100" y2="50" stroke="#94a3b8" strokeWidth="1" /> : null}
       {previewValues.map((value, index) => {
-        const height = graphType === "stack" ? value / 2 : value;
+        const x = 4 + index * 16.2 + barGap / 10;
+        const width = 12 - barGap / 5;
+
+        if (graphType === "stack") {
+          const halfHeight = value / 2;
+          return (
+            <g key={index} style={{ filter: previewFilter }}>
+              <rect
+                x={x}
+                y={50 - halfHeight}
+                width={width}
+                height={halfHeight}
+                fill={lineColor}
+                style={{ filter: elementFilter }}
+              />
+              <rect
+                x={x}
+                y="50"
+                width={width}
+                height={halfHeight}
+                fill={lineColor}
+                opacity="0.65"
+                style={{ filter: elementFilter }}
+              />
+            </g>
+          );
+        }
 
         return (
-          <div
+          <rect
             key={index}
-            className={
-              graphType === "stack"
-                ? "relative h-full flex-1"
-                : "flex-1 self-end transition-all duration-300"
-            }
-            style={graphType === "stack" ? undefined : { height: `${height}%` }}
-          >
-            <div
-              className={
-                graphType === "stack"
-                  ? "absolute bottom-1/2 w-full transition-all duration-300"
-                  : "h-full w-full"
-              }
-              style={{
-                height: `${height}%`,
-                backgroundColor: lineColor,
-                boxShadow: previewShadow,
-                filter: previewFilter,
-              }}
-            />
-            {graphType === "stack" ? (
-              <div
-                className="absolute top-1/2 w-full transition-all duration-300"
-                style={{
-                  height: `${height}%`,
-                  backgroundColor: lineColor,
-                  boxShadow: previewShadow,
-                  filter: previewFilter,
-                }}
-              />
-            ) : null}
-          </div>
+            x={x}
+            y={100 - value}
+            width={width}
+            height={value}
+            fill={lineColor}
+            style={{ filter: elementFilter }}
+          />
         );
       })}
-    </div>
+    </svg>
   );
 }
 
