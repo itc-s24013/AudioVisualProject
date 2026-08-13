@@ -36,8 +36,16 @@ function DesignPreview({
   lineColor,
   lineWidth,
   graphType,
-}: Pick<PresetItem, "lineColor" | "lineWidth" | "graphType">) {
+  effectType,
+}: Pick<PresetItem, "lineColor" | "lineWidth" | "graphType" | "effectType">) {
   const barGap = Math.max(2, 14 - lineWidth);
+  const isGlow = effectType === "glow";
+  const previewFilter = isGlow ? "blur(4px)" : undefined;
+  const previewShadow = isGlow
+    ? `0 0 12px ${lineColor}, 0 0 24px ${lineColor}80`
+    : effectType === "none"
+      ? "none"
+      : `0 2px 8px ${lineColor}40`;
 
   if (graphType === "line") {
     const points = previewValues
@@ -53,6 +61,7 @@ function DesignPreview({
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         aria-label="ラインのプレビュー"
+        style={{ filter: previewFilter }}
       >
         <polyline
           points={points}
@@ -91,7 +100,8 @@ function DesignPreview({
               style={{
                 height: `${height}%`,
                 backgroundColor: lineColor,
-                boxShadow: `0 2px 8px ${lineColor}40`,
+                boxShadow: previewShadow,
+                filter: previewFilter,
               }}
             />
             {graphType === "stack" ? (
@@ -100,7 +110,8 @@ function DesignPreview({
                 style={{
                   height: `${height}%`,
                   backgroundColor: lineColor,
-                  boxShadow: `0 2px 8px ${lineColor}40`,
+                  boxShadow: previewShadow,
+                  filter: previewFilter,
                 }}
               />
             ) : null}
@@ -675,6 +686,7 @@ export default function PresetManager() {
                       lineColor={form.lineColor}
                       lineWidth={form.lineWidth}
                       graphType={form.graphType}
+                      effectType={form.effectType}
                     />
                   </div>
                 </div>
