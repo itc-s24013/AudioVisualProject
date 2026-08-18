@@ -367,11 +367,6 @@ export default function PresetManager() {
                           <h3 className="font-semibold text-slate-900">{preset.name}</h3>
                           <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            {preset.isDefault ? (
-                              <span className="inline-flex rounded-full border-2 border-slate-900 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-900">
-                                デフォルト
-                              </span>
-                            ) : null}
                             {isSelected ? (
                               <span className="inline-flex rounded-full border-2 border-indigo-500 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600">
                                 再生に使用中

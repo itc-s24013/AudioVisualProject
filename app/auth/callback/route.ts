@@ -1,58 +1,41 @@
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-
-  let next = searchParams.get("next") ?? "/";
-
+  // if "next" is in param, use it as the redirect URL
+  let next = searchParams.get("next") ?? "/presets";
   if (!next.startsWith("/")) {
-    next = "/";
+    // if "next" is not a relative URL, use the default
+    next = "/presets";
   }
-
-  console.log("===== Auth Callback =====");
-  console.log("code:", code ? "あり" : "なし");
 
   if (code) {
-    const supabase = await createClient();
-
-    const { error } =
-      await supabase.auth.exchangeCodeForSession(code);
-
-    if (error) {
-      console.error("===== Supabase Auth Error =====");
-      console.error("message:", error.message);
-      console.error("status:", error.status);
-      console.error("name:", error.name);
-      console.error("================================");
-    } else {
-      console.log("===== Login Success =====");
-
-      const forwardedHost =
-        request.headers.get("x-forwarded-host");
-
-      const isLocalEnv =
-        process.env.NODE_ENV === "development";
-
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(
-          `https://${forwardedHost}${next}`
-        );
-      } else {
-        return NextResponse.redirect(
-          `${origin}${next}`
-        );
+    const response = NextResponse.redirect(new URL(next, request.url));
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll: (cookiesToSet) => {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
+        },
       }
+    );
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (!error) {
+      return response;
     }
-  } else {
-    console.error("Auth callbackにcodeがありません");
+
+    console.error("Supabase OAuth code exchange failed", error);
   }
 
-  return NextResponse.redirect(
-    `${origin}/auth/auth-code-error`
-  );
+  // return the user to an error page with instructions
+  return NextResponse.redirect(new URL("/auth/auth-code-error", request.url));
 }

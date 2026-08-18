@@ -11,20 +11,6 @@ export interface CurrentAccountInfo {
   email: string;
 }
 
-export async function signInWithGoogle() {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: 'http://localhost:3000/auth/callback',
-        },
-      })
-      
-      if (data.url) {
-        redirect(data.url) // use the redirect API for your server framework
-      }
-}
-
 export async function signOut() {
     const supabase = await createClient();
     await supabase.auth.signOut({ scope: "global" });
