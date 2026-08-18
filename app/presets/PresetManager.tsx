@@ -30,6 +30,106 @@ const initialForm = {
   effectType: "lens",
 };
 
+const previewValues = [24, 52, 37, 67, 44, 72];
+
+function DesignPreview({
+  lineColor,
+  lineWidth,
+  graphType,
+  effectType,
+}: Pick<PresetItem, "lineColor" | "lineWidth" | "graphType" | "effectType">) {
+  const barGap = Math.max(2, 14 - lineWidth);
+  const isGlow = effectType === "glow";
+  const previewFilter = isGlow ? "blur(4px)" : undefined;
+  const elementFilter = isGlow
+    ? `drop-shadow(0 0 12px ${lineColor}) drop-shadow(0 0 24px ${lineColor}80)`
+    : effectType === "none"
+      ? undefined
+      : `drop-shadow(0 2px 4px ${lineColor}40)`;
+
+  if (graphType === "line") {
+    const points = previewValues
+      .map((value, index) => {
+        const x = (index / (previewValues.length - 1)) * 100;
+        return `${x},${100 - value}`;
+      })
+      .join(" ");
+
+    return (
+      <svg
+        className="h-full w-full overflow-visible"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-label="ラインのプレビュー"
+        style={{ filter: previewFilter }}
+      >
+        <polyline
+          points={points}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth={lineWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      className="h-full w-full overflow-visible"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-label={graphType === "stack" ? "スタックのプレビュー" : "バーのプレビュー"}
+      style={{ filter: previewFilter }}
+    >
+      {graphType === "stack" ? <line x1="0" y1="50" x2="100" y2="50" stroke="#94a3b8" strokeWidth="1" /> : null}
+      {previewValues.map((value, index) => {
+        const x = 4 + index * 16.2 + barGap / 10;
+        const width = 12 - barGap / 5;
+
+        if (graphType === "stack") {
+          const halfHeight = value / 2;
+          return (
+            <g key={index} style={{ filter: previewFilter }}>
+              <rect
+                x={x}
+                y={50 - halfHeight}
+                width={width}
+                height={halfHeight}
+                fill={lineColor}
+                style={{ filter: elementFilter }}
+              />
+              <rect
+                x={x}
+                y="50"
+                width={width}
+                height={halfHeight}
+                fill={lineColor}
+                opacity="0.65"
+                style={{ filter: elementFilter }}
+              />
+            </g>
+          );
+        }
+
+        return (
+          <rect
+            key={index}
+            x={x}
+            y={100 - value}
+            width={width}
+            height={value}
+            fill={lineColor}
+            style={{ filter: elementFilter }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 export default function PresetManager() {
   const [presets, setPresets] = useState<PresetItem[]>([]);
   const [form, setForm] = useState(initialForm);
@@ -363,8 +463,8 @@ export default function PresetManager() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-slate-900">{preset.name}</h3>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-semibold text-slate-900" title={preset.name}>{preset.name}</h3>
                           <p className="mt-1 text-xs text-slate-400">{new Date(preset.createdAt).toLocaleString("ja-JP")}</p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {isSelected ? (
@@ -590,17 +690,12 @@ export default function PresetManager() {
                     <span>{form.graphType} / {form.effectType}</span>
                   </div>
                   <div className="mt-3 flex h-28 items-end gap-2 rounded-none border border-slate-200/60 bg-slate-100 p-4">
-                    {[24, 52, 37, 67, 44, 72].map((value, index) => (
-                      <div
-                        key={index}
-                        className="flex-1 transition-all duration-300"
-                        style={{
-                          height: `${value}%`,
-                          backgroundColor: form.lineColor,
-                          boxShadow: `0 2px 8px ${form.lineColor}40`,
-                        }}
-                      />
-                    ))}
+                    <DesignPreview
+                      lineColor={form.lineColor}
+                      lineWidth={form.lineWidth}
+                      graphType={form.graphType}
+                      effectType={form.effectType}
+                    />
                   </div>
                 </div>
               </div>
