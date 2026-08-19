@@ -2,7 +2,8 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 {
     // /presets で選択されたデザイン設定(未指定時はデフォルト値にフォールバック)
     const design = {
-        lineColor: "#dcf0f0",
+        backgroundColor: "#dcf0f0",
+        lineColor: "#ffffff",
         ...(designSettings || {}),
     };
 
@@ -617,16 +618,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
         // colors
         col_bg_main = {
-            h: p.hue(p.color(design.lineColor)),
-            s: p.saturation(p.color(design.lineColor)),
-            b: p.brightness(p.color(design.lineColor)),
+            h: p.hue(p.color(design.backgroundColor)),
+            s: p.saturation(p.color(design.backgroundColor)),
+            b: p.brightness(p.color(design.backgroundColor)),
             get() { return p.color(this.h, this.s, this.b) } 
         };
 
         col_line = {
-            h: 0,
-            s: 0,
-            b: 100,
+            h: p.hue(p.color(design.lineColor)),
+            s: p.saturation(p.color(design.lineColor)),
+            b: p.brightness(p.color(design.lineColor)),
             get() { return p.color(this.h, this.s, this.b) }
         };
 

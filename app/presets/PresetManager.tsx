@@ -10,6 +10,7 @@ import { useDesignSettings } from "@/app/context/DesignSettingProvider";
 interface PresetItem {
   id: string;
   name: string;
+  backgroundColor: string;
   lineColor: string;
   lineWidth: number;
   graphType: string;
@@ -23,7 +24,8 @@ const STORAGE_KEY = "audio-visualizer-presets";
 
 const initialForm = {
   name: "",
-  lineColor: "#dcf0f0",
+  backgroundColor: "#dcf0f0",
+  lineColor: "#ffffff",
 };
 
 export default function PresetManager() {
@@ -63,6 +65,7 @@ export default function PresetManager() {
   // silent: true の場合はトーストを出さない(初期表示時の自動選択などで使用)。
   const applyDesign = (preset: PresetItem, options?: { silent?: boolean }) => {
     setDesignSettings({
+      backgroundColor: preset.backgroundColor ?? preset.lineColor,
       lineColor: preset.lineColor,
     });
     setSelectedPresetId(preset.id);
@@ -141,8 +144,8 @@ export default function PresetManager() {
       const payload = {
         id: editingId ?? undefined,
         name: form.name.trim(),
+        backgroundColor: form.backgroundColor,
         lineColor: form.lineColor,
-        // 現在の /play ではテーマカラーだけを使用する。
         // 以下は既存の保存形式を保つための互換値。
         lineWidth: 4,
         graphType: "bars",
@@ -175,6 +178,7 @@ export default function PresetManager() {
   const handleEdit = (preset: PresetItem) => {
     setForm({
       name: preset.name,
+      backgroundColor: preset.backgroundColor,
       lineColor: preset.lineColor,
     });
     setEditingId(preset.id);
@@ -377,12 +381,18 @@ export default function PresetManager() {
                           >
                             📌
                           </button>
-                          <div className="h-6 w-6 rounded-none border border-slate-200 shadow-inner" style={{ backgroundColor: preset.lineColor }} />
+                          <div
+                            className="flex h-6 w-10 overflow-hidden rounded-none border border-slate-200 shadow-inner"
+                            aria-label={`背景色 ${preset.backgroundColor}、線の色 ${preset.lineColor}`}
+                          >
+                            <span className="w-1/2" style={{ backgroundColor: preset.backgroundColor }} />
+                            <span className="w-1/2" style={{ backgroundColor: preset.lineColor }} />
+                          </div>
                         </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                        <span className="rounded-none border border-slate-200 bg-white px-2.5 py-1">テーマカラー</span>
+                        <span className="rounded-none border border-slate-200 bg-white px-2.5 py-1">背景・線の色</span>
                       </div>
 
                       <div className="mt-4 flex gap-2">
@@ -497,7 +507,25 @@ export default function PresetManager() {
               </label>
 
               <label className="block text-sm font-medium text-slate-700">
-                <span className="mb-2 block">テーマカラー</span>
+                <span className="mb-2 block">背景色</span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.backgroundColor}
+                    onChange={(event) => setForm((current) => ({ ...current, backgroundColor: event.target.value }))}
+                    className="h-12 w-20 cursor-pointer rounded-none border border-slate-200 bg-slate-50 p-1.5"
+                  />
+                  <input
+                    type="text"
+                    value={form.backgroundColor}
+                    onChange={(event) => setForm((current) => ({ ...current, backgroundColor: event.target.value }))}
+                    className="flex-1 rounded-none border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm uppercase text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="mb-2 block">線の色</span>
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
@@ -515,7 +543,7 @@ export default function PresetManager() {
               </label>
 
               <div className="rounded-none border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                再生画面では、グラフ・フレーム・情報表示にこのカラーが適用されます。
+                背景色は各パネルに、線の色はグラフ・フレーム・情報表示に適用されます。
               </div>
             </div>
 

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export interface PresetPayload {
   id?: string;
   name: string;
+  backgroundColor: string;
   lineColor: string;
   lineWidth: number;
   graphType: string;
@@ -16,6 +17,7 @@ export interface PresetPayload {
 export interface PresetRecord {
   id: string;
   name: string;
+  backgroundColor: string;
   lineColor: string;
   lineWidth: number;
   graphType: string;
@@ -52,11 +54,16 @@ function formatPreset(preset: {
 }): PresetRecord {
   const settings = (preset.settings as Record<string, unknown> | null) ?? {};
   const design = preset.designSetting;
+  const hasBackgroundColor = typeof settings.backgroundColor === "string";
 
   return {
     id: preset.id,
     name: preset.name,
-    lineColor: (design?.lineColor ?? (settings.lineColor as string | undefined) ?? "#dcf0f0"),
+    // backgroundColor がない既存データでは、以前の lineColor を背景色として扱う。
+    backgroundColor: String(settings.backgroundColor ?? design?.lineColor ?? settings.lineColor ?? "#dcf0f0"),
+    lineColor: hasBackgroundColor
+      ? String(design?.lineColor ?? settings.lineColor ?? "#ffffff")
+      : "#ffffff",
     lineWidth: Number(design?.lineWidth ?? (settings.lineWidth as number | undefined) ?? 4),
     graphType: String(design?.graphType ?? (settings.graphType as string | undefined) ?? "bars"),
     sensitivity: Number(design?.sensitivity ?? (settings.sensitivity as number | undefined) ?? 0.7),
@@ -94,6 +101,7 @@ export async function savePresetToSupabase(payload: PresetPayload): Promise<Pres
       name: payload.name,
       isDefault: false,
       settings: {
+        backgroundColor: payload.backgroundColor,
         lineColor: payload.lineColor,
         lineWidth: payload.lineWidth,
         graphType: payload.graphType,
@@ -144,6 +152,7 @@ export async function updatePresetInSupabase(payload: PresetPayload): Promise<Pr
     data: {
       name: payload.name,
       settings: {
+        backgroundColor: payload.backgroundColor,
         lineColor: payload.lineColor,
         lineWidth: payload.lineWidth,
         graphType: payload.graphType,
