@@ -9,13 +9,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         ...(designSettings || {}),
     };
 
-    const lineWeight = (base) => base * (design.lineWidth / 4);
-    const applySensitivity = (data) => {
-        for (let i = 0; i < data.length; i++) {
-            data[i] = Math.min(255, data[i] * (design.sensitivity / 0.7));
-        }
-    };
-
     const PATH_FONT = "/play/assets/Ac437_IBM_PGC.ttf";
     const PATH_AUDIO = "/play/assets/song.mp3";
 
@@ -30,9 +23,11 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     let cam = null;
 
     // audio
+    const SENSITIVITY = design.sensitivity; // 感度（0.0 〜 1.5）: アナライザーへの入力ゲイン。再生音量には影響しない
     let audio_el = null;
     let audio_ctx = null;
     let src = null;
+    let gain_for_analysis = null; // アナライザー専用GainNode（感度制御）
     let an_freq = null;
     let an_freq_array = null;
     let an_lowFreq = null;
@@ -46,6 +41,9 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     let an_high = null;
     let an_high_array = null;
     let highpass = null;
+
+    let an_city = null;
+    let an_city_array = null;
 
     //
     // overall
@@ -80,7 +78,10 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let g_graph_box_ampGraphHigh = null;
         let g_graph_box_ampGraphLow = null;
 
-        let amp_history_high = [];
+        // ampGraph描画モードの設定 ("oscilloscope" | "waveform")
+        let amp_graph_high_mode = "waveform";
+        let amp_graph_low_mode = "oscilloscope";
+
         const ampGraphHigh_oscilloscopeState = {
             sweep_buffer: [],
             scan_x: 0,
@@ -97,14 +98,34 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             previous_sweep_y: null,
         };
 
+        const ampGraphHigh_waveformState = {
+            history: [],
+            speed: 2, // 1フレームあたりのスクロール幅(px)
+        };
+
+        const ampGraphLow_waveformState = {
+            history: [],
+            speed: 2,
+        };
+
+        // パネルラベル（バッジ）の共通スタイル設定
+        const PANEL_BADGE_FONT_SIZE = 30;
+        const PANEL_BADGE_H = 30;
+        const PANEL_BADGE_PADDING_X = 10;
+        const SUB_GRAPH_LABEL_TEXT = "High / Low";
+        const SUB_GRAPH_LABEL_CUSTOM_W = null; // 数値指定で固定幅、nullで自動計算
+
     // g_info
     let g_info = null;
         let g_info_particle = null; // 背景パーティクルの描画先（infoパネルの背景として使用）
-        let currentInfoScreen = "blank";
+        const SCREEN_ORDER = ["City", "Torus", "Cube"];
+        let currentInfoScreen = "City";
         let g_info_box_screen = null;   // g_info内側画面の共通位置・サイズ
         let g_info_box_terminal = null; // g_info下部ターミナルの位置・サイズ
         let g_info_terminal = null;     // ターミナルパネルのWEBGLバッファ
         const TERMINAL_HEIGHT_RATIO = 1 / 7; // ターミナルの縦幅の比率（使える縦幅全体に対する割合）
+        const INDICATOR_BAR_H = 40;        // スクリーン名インジケーターバーの高さ(px)
+        const INDICATOR_FONT_SIZE = 40;    // インジケーターバーのフォントサイズ
         function make_terminal_state()
         {
             return {
@@ -117,21 +138,35 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let terminal_state_left = make_terminal_state();   // 左側ログの状態
         let terminal_state_right = make_terminal_state();  // 右側ログの状態
         let is_playing = false; // 現在再生中かどうか
+        let playback_start_frame = 0; // 再生開始時の frameCount
         const MAX_TERMINAL_LINES = 4;        // 表示する最大行数
         const TYPE_SPEED_FRAMES = 2;         // 1文字追加に必要なフレーム数
         const LINE_DELAY_FRAMES = 5;        // 行の入力完了から次の行を追加するまでの待機フレーム数
 
-        // 再生開始時に info_terminal_left へ表示する内容（プレースホルダー。後で実際の内容に差し替える）
-        let terminal_left_content = [
-            "TRACK: ------------",
-            "ARTIST: ------------",
-            "STATUS: NOW PLAYING",
-        ];
+        // 再生開始時に info_terminal_left へ表示するシステムログ（audio_el / audio_ctx から動的生成）
+        function get_terminal_left_system_log()
+        {
+            let rawSrc = audio_el?.src || PATH_AUDIO;
+            let filename = rawSrc.split('/').pop().split('?')[0];
+            let trackName = decodeURIComponent(filename).toUpperCase();
 
-        // 再生開始時に info_terminal_right へ表示する内容
-        let terminal_right_content = [
-            "Playback started.",
-        ];
+            let dur = audio_el?.duration;
+            let durStr = (dur && !isNaN(dur) && isFinite(dur))
+                ? `${Math.floor(dur / 60)}:${Math.floor(dur % 60).toString().padStart(2, '0')}`
+                : "--:--";
+
+            let sr = audio_ctx ? `${audio_ctx.sampleRate}Hz` : "44100Hz";
+            let readyStateStr = (audio_el?.readyState >= 3) ? "READY" : "BUFFERING";
+            let vol = Math.round((audio_el?.volume ?? 1) * 100);
+
+            return [
+                // `AUDIO_SRC: ${trackName}`, // 問題があったのでナシ
+                `AUDIO_SRC: SONG.WAV`,
+                `DSP_RATE : ${sr} / ${durStr}`,
+                `BUFFER   : ${readyStateStr} [VOL:${vol}%]`,
+                `STATUS   : PLAYBACK_ACTIVE`,
+            ];
+        }
 
         // ダミーメッセージ集：常時ループでの使用はやめ、"t"/"y"キーによるテスト更新の
         // サンプルデータ提供元としてのみ使う
@@ -155,6 +190,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let g_info_cube = null;
         let g_info_cubes = []; // 複数キューブの属性（x, y, z, baseSize）を初回のみ生成して保持
         let g_info_cylinder = null;
+        let g_info_city_last_amps = []; // City画面のビル振幅キャッシュ（トランジション時の静止用）
 
         // 画面切替のスキャンライントランジション状態
         let g_infoTransition = {
@@ -171,7 +207,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     // colors
     let col_bg_main = null;
     let col_line = null;
-    let col_graph_bgLine = null;
 
     let fx = null;
     let fx_mosaic = null;
@@ -253,18 +288,21 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         audio_el = new Audio(src || PATH_AUDIO);
 
         // == 再生・停止のイベントリスナー ==
+        // 再生状態に連動してターミナルの表示を制御する
         audio_el.addEventListener("play", () => {
             is_playing = true;
-            p.loop();
+            playback_start_frame = p.frameCount;
             setPlaying(true); // 再生コントロールUI関連のやつ
 
-            // 再生状態に連動してターミナルの表示を制御する
-            // 再生開始のたびに左右ともリセットしてから、左右それぞれの内容を流し込む
-            info_terminal_update(terminal_state_left, terminal_left_content);
-            info_terminal_update(terminal_state_right, terminal_right_content);
+            // 再生開始のたびに左右ともリセットしてから、動的に生成したシステムログを流し込む
+            info_terminal_update(terminal_state_left, get_terminal_left_system_log());
+            info_terminal_update(terminal_state_right, [
+                "Playback started.",
+                "Now showing " + currentInfoScreen + ".",
+            ]);
 
-            // 3D図形をスキャンラインで出現させる（一時停止からの再開も含め、playイベントのたびに毎回発火）
-            info_transition_start("none", currentInfoScreen);
+            // 3D図形をスキャンラインで出現させる（トランジション中でも強制上書きで即座に切り替える）
+            info_transition_start("none", currentInfoScreen, true);
         });
 
         audio_el.addEventListener("pause", () => {
@@ -272,13 +310,13 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             // p.noLoop();
             setPlaying(false); // 再生コントロールUI関連のやつ
 
-            // 再生状態に連動してターミナルの表示を制御する
             // 停止時は左右とも空にして「何も表示しない」状態に戻す
             info_terminal_update(terminal_state_left, []);
             info_terminal_update(terminal_state_right, []);
 
-            // 3D図形をスキャンラインで消す
-            info_transition_start(currentInfoScreen, "none");
+            // 3D図形を即座に消す（トランジションなし）
+            g_infoTransition.active = false;
+            g_infoTransition.progress = 0;
         });
 
         audio_el.addEventListener("ended", () => {
@@ -286,14 +324,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             // p.noLoop();
             setPlaying(false); // 再生コントロールUI関連のやつ
 
-            // 再生状態に連動してターミナルの表示を制御する
             info_terminal_update(terminal_state_left, []);
             info_terminal_update(terminal_state_right, []);
+
+            // // 3D図形を即座に消す（トランジションなし）
+            // g_infoTransition.active = false;
+            // g_infoTransition.progress = 0;
 
             // 3D図形をスキャンラインで消す
             info_transition_start(currentInfoScreen, "none");
         });
-
         // ==========================================
 
         audio_ctx = new AudioContext();
@@ -341,6 +381,14 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         an_high.smoothingTimeConstant = 0.86;
         an_high_array = new Uint8Array(an_high.frequencyBinCount);
 
+        // City画面専用のアナライザーノード（1024ビン）
+        an_city = audio_ctx.createAnalyser();
+        an_city.fftSize = 2048;
+        an_city.maxDecibels = 0;
+        an_city.minDecibels = -120;
+        an_city.smoothingTimeConstant = 0.9;
+        an_city_array = new Uint8Array(an_city.frequencyBinCount);
+
         src = audio_ctx.createMediaElementSource(audio_el);
 
         // 再生用
@@ -350,7 +398,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         src.connect(an_freq);
 
         // ローパス用
-        src.connect(lowpass)
+        src.connect(lowpass);
         lowpass.connect(an_lowFreq);
 
         // 新しい低周波数用
@@ -360,8 +408,12 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         // 新しい高周波数用
         src.connect(highpass);
         highpass.connect(an_high);
+
+        // City画面用
+        src.connect(an_city);
     }
 
+    //
     // == 再生・停止のUI関連用の関数 ==
     function setPlaying(playing) {
         playback.onPlaybackChange?.(playing);
@@ -384,6 +436,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         return audio_el.paused ? playAudio() : pauseAudio();
     }
     // =================================
+    //
 
     p.setup = async () => 
     {
@@ -391,10 +444,9 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
         p.frameRate(30);
 
-
         const cnv = p.createCanvas(W, H, p.WEBGL);
         // 画面クリックで再生。コントロールUIがあるから不要
-        /*
+        /* 
         cnv.mousePressed(() => {
             togglePlayback();
         });
@@ -570,16 +622,17 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             // 背景レイヤー：g_info_particleを描く（Torus/Cubeで共通の内容のため共有）
             g_info_screen_bg = p.createGraphics(
                 g_info_box_screen.w - SW_PANELS * 2,
-                g_info_box_screen.h - SW_PANELS * 2,
+                g_info_box_screen.h - SW_PANELS * 2 - INDICATOR_BAR_H,
                 p.WEBGL
             );
 
             // 3D形状レイヤー：選択中の画面のTorus/Cube/Blankを描く
-            // p5.Framebuffer を使用し、インナーストロークの内側サイズ（SW_PANELS分縮小）で生成
+            // p5.Framebuffer を使用し、インナーストロークとインジケーターバーを除いたサイズで生成
             g_info_screen_shape = p.createFramebuffer({
                 width: g_info_box_screen.w - SW_PANELS * 2,
-                height: g_info_box_screen.h - SW_PANELS * 2
+                height: g_info_box_screen.h - SW_PANELS * 2 - INDICATOR_BAR_H
             });
+            
             // 画面固有の設定・状態（専用WEBGLバッファではなく、ただのデータ）
             g_info_torus = {
                 rotX_speed: 0.01,
@@ -624,7 +677,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         cam.lookAt(0, 0, 0);
 
 
-
         // colors
         col_bg_main = {
             h: p.hue(p.color(design.backgroundColor)),
@@ -640,24 +692,21 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             get() { return p.color(this.h, this.s, this.b) }
         };
 
-        col_graph_bgLine = {
-            h: col_line.h,
-            s: col_line.s,
-            b: col_line.b - 45, // 100超えそうだったら逆に下げるとか作ったほうがいいのかもしれない
-            get() { return p.color(this.h, this.s, this.b) } 
-        };
 
-        // col_graph_bgLine = p.color("hsl(0, 0, 50%)");
-
-        // text setup
-        let f = await p.loadFont(PATH_FONT)
-        g_graph.textFont(f);
+        // text setup (WebGLコンテキストごとに個別のFontインスタンスを割り当て、グリフテクスチャキャッシュの衝突を防ぐ)
+        const [f_main, f_graph, f_terminal] = await Promise.all([
+            p.loadFont(PATH_FONT),
+            p.loadFont(PATH_FONT),
+            p.loadFont(PATH_FONT),
+        ]);
+        p.textFont(f_main);
+        g_graph.textFont(f_graph);
         g_graph.textSize(18);
         g_graph.textAlign(p.CENTER, p.TOP);
-        g_graph_mainGraph.textFont(f);
+        g_graph_mainGraph.textFont(f_graph);
         g_graph_mainGraph.textSize(23);
         g_graph_mainGraph.textAlign(p.CENTER, p.TOP);
-        g_info_terminal.textFont(f);
+        g_info_terminal.textFont(f_terminal);
         g_info_terminal.textSize(30);
         g_info_terminal.textAlign(p.LEFT, p.TOP);
 
@@ -675,7 +724,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         fx.setUniform('vignette', 0);
 
         playback.onReady?.();
-
     }
 
     const PARTICLE_COUNT = 200;
@@ -695,8 +743,8 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         g_info_particle.push();
         g_info_particle.background(col_bg_main.get());
         g_info_particle.fill(col_bg_main.get());
-        g_info_particle.stroke(p.color(col_bg_main.h, col_bg_main.s, 15));
-        g_info_particle.strokeWeight(lineWeight(2));
+        g_info_particle.stroke(p.color(col_bg_main.h, col_bg_main.s, col_bg_main.b + 12));
+        g_info_particle.strokeWeight(2);
 
         const getPosX = () => Math.floor(Math.random() * PARTICLE_WIDTH) + PARTICLE_START_X;
         const getPosY = () => Math.floor(Math.random() * PARTICLE_HEIGHT) + PARTICLE_START_Y;
@@ -730,11 +778,11 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
         g_graph_mainGraph.stroke(col_line.get());
         // 一番下の線
-        g_graph_mainGraph.strokeWeight(lineWeight(3));
+        g_graph_mainGraph.strokeWeight(3);
         g_graph_mainGraph.line(0, bottom_y, waveform_width, bottom_y);
 
         // 縦の線
-        g_graph_mainGraph.strokeWeight(lineWeight(3));
+        g_graph_mainGraph.strokeWeight(3);
         g_graph_mainGraph.line(0, top_y, 0, bottom_y);
 
 
@@ -756,14 +804,14 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
             let ease = ((t) => 1 - (1 - t) * (1 - t))(progress_array[idx]);
             let y = p.lerp(target_y + 15, target_y, ease);
-            let alpha_val = p.lerp(0, 255, ease);
+            let alpha_val = p.lerp(0, 100, ease);
 
             g_graph_mainGraph.push();
-            let c = col_graph_bgLine.get();
+            let c = col_line.get();
             c.setAlpha(alpha_val);
             g_graph_mainGraph.translate(0, y);
             g_graph_mainGraph.stroke(c);
-            g_graph_mainGraph.strokeWeight(lineWeight(1));
+            g_graph_mainGraph.strokeWeight(2);
             g_graph_mainGraph.line(0, 0, waveform_width, 0);
             c.setAlpha(255);
             g_graph_mainGraph.pop();
@@ -968,39 +1016,40 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     }
 
 
-    // ampGraphの波形別バージョン（使うかわからない）
-    function graph_ampGraphHigh_waveform_draw(val)
+    // ampGraphの履歴スクロール波形描画用の汎用関数
+    function graph_ampGraph_waveform_draw(raw_line, waveform_state, val)
     {
-        amp_history_high.push(val);
-        
-        let speed = 2; // 1フレームで進むピクセル数
-        let max_history = Math.ceil(g_graph_ampGraphHigh.width / speed);
-        
-        while (amp_history_high.length > max_history) {
-            amp_history_high.shift();
+        let w = raw_line.width;
+        let h = raw_line.height;
+        let speed = waveform_state.speed || 2;
+        let max_history = Math.ceil(w / speed);
+
+        waveform_state.history.push(val);
+        while (waveform_state.history.length > max_history) {
+            waveform_state.history.shift();
         }
 
         // --- 波形を rawLine に描画 ---
-        g_graph_ampGraphHigh_rawLine.clear();
-        g_graph_ampGraphHigh_rawLine.push();
-        g_graph_ampGraphHigh_rawLine.translate(-g_graph_ampGraphHigh_rawLine.width / 2, -g_graph_ampGraphHigh_rawLine.height / 2);
+        raw_line.clear();
+        raw_line.push();
+        raw_line.translate(-w / 2, -h / 2);
         
-        g_graph_ampGraphHigh_rawLine.noFill();
-        g_graph_ampGraphHigh_rawLine.stroke(col_line.get());
-        g_graph_ampGraphHigh_rawLine.strokeWeight(lineWeight(10));
+        raw_line.noFill();
+        raw_line.stroke(col_line.get());
+        raw_line.strokeWeight(2);
 
-        g_graph_ampGraphHigh_rawLine.beginShape();
-        for (let i = 0; i < amp_history_high.length; i++) {
+        raw_line.beginShape();
+        for (let i = 0; i < waveform_state.history.length; i++) {
             // 右端が最新データ
-            let x = g_graph_ampGraphHigh_rawLine.width - (amp_history_high.length - 1 - i) * speed;
+            let x = w - (waveform_state.history.length - 1 - i) * speed;
             // 値が大きいほど上に振れる
-            let y = p.map(amp_history_high[i], 0, 255, g_graph_ampGraphHigh_rawLine.height - 10, 10);
+            let y = p.map(waveform_state.history[i], 0, 255, h - 10, 10);
             
-            y = p.constrain(y, 10, g_graph_ampGraphHigh_rawLine.height - 10);
-            g_graph_ampGraphHigh_rawLine.vertex(x, y);
+            y = p.constrain(y, 10, h - 10);
+            raw_line.vertex(x, y);
         }
-        g_graph_ampGraphHigh_rawLine.endShape();
-        g_graph_ampGraphHigh_rawLine.pop();
+        raw_line.endShape();
+        raw_line.pop();
     }
 
     // ampGraphのoscilloscope描画用の汎用関数
@@ -1047,7 +1096,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         
         raw_line.noFill();
         raw_line.stroke(col_line.get());
-        raw_line.strokeWeight(lineWeight(2));
+        raw_line.strokeWeight(2);
 
         // 連続した波形ラインの描画 (nullをスキップして線分割)
         let in_shape = false;
@@ -1087,8 +1136,10 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
         graphics.push();
         graphics.translate(-w / 2, -h / 2);
-        graphics.stroke(col_graph_bgLine.get());
-        graphics.strokeWeight(lineWeight(1));
+        let c = col_line.get();
+        c.setAlpha(76);
+        graphics.stroke(c);
+        graphics.strokeWeight(2);
         // for (let x = 0; x <= w; x += grid_size) {
         //     graphics.line(x, 0, x, h);
         // }
@@ -1099,14 +1150,20 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         graphics.pop();
     }
 
-    function graph_ampGraph_draw(graphics, raw_line, fx_layer, mosaic_fx, oscilloscope_state, val)
+    function graph_ampGraph_draw(graphics, raw_line, fx_layer, mosaic_fx, render_mode, osc_state, wave_state, val)
     {
         let w = graphics.width;
         let h = graphics.height;
 
         graphics.background(col_bg_main.get());
         graph_ampGraph_grid_draw(graphics);
-        graph_ampGraph_oscilloscope_draw(raw_line, oscilloscope_state, val);
+
+        // モードに応じて描画関数を切り替え
+        if (render_mode === "waveform") {
+            graph_ampGraph_waveform_draw(raw_line, wave_state, val);
+        } else {
+            graph_ampGraph_oscilloscope_draw(raw_line, osc_state, val);
+        }
 
         // rawLineにモザイクをかける
         fx_layer.clear();
@@ -1135,7 +1192,9 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_ampGraphHigh_rawLine,
             g_graph_ampGraphHigh_fx,
             fx_mosaic,
+            amp_graph_high_mode,
             ampGraphHigh_oscilloscopeState,
+            ampGraphHigh_waveformState,
             val
         );
     }
@@ -1155,9 +1214,44 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_ampGraphLow_rawLine,
             g_graph_ampGraphLow_fx,
             fx_mosaic_low,
+            amp_graph_low_mode,
             ampGraphLow_oscilloscopeState,
+            ampGraphLow_waveformState,
             val
         );
+    }
+
+    // パネル左上に配置するオーバーレイバッジの描画（col_line背景 + col_bg_main文字）
+    function graph_panelBadge_draw(
+        box,
+        labelText,
+        customW = null,
+        fontSize = PANEL_BADGE_FONT_SIZE,
+        badgeH = PANEL_BADGE_H,
+        paddingX = PANEL_BADGE_PADDING_X
+    ) {
+        let x = box.x + SW_PANELS;
+        let y = box.y + SW_PANELS;
+
+        g_graph.push();
+        g_graph.textSize(fontSize);
+
+        // 横幅の計算（指定がなければ textWidth + 左右余白 で自動計算）
+        let w = customW ?? (g_graph.textWidth(labelText) + paddingX * 2);
+
+        // 背景（col_line）
+        g_graph.noStroke();
+        let bgCol = col_line.get();
+        bgCol.setAlpha(220);
+        g_graph.fill(bgCol);
+        g_graph.rect(x, y, w, badgeH);
+
+        // テキスト（col_bg_main）
+        g_graph.fill(col_bg_main.get());
+        g_graph.textAlign(p.LEFT, p.CENTER);
+        g_graph.text(labelText, x + paddingX, y + badgeH / 2);
+
+        g_graph.pop();
     }
 
     function graph_panels_draw()
@@ -1182,6 +1276,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_box_mainGraph.w - SW_PANELS * 2,
             g_graph_box_mainGraph.h - SW_PANELS * 2
         );
+        graph_panelBadge_draw(g_graph_box_mainGraph, "Amplitude");
 
         // --- g_graph_subGraph ---
         // 枠（白の矩形）
@@ -1200,6 +1295,8 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_box_subGraph.w - SW_PANELS * 2,
             g_graph_box_subGraph.h - SW_PANELS * 2
         );
+        // 左上オーバーレイバッジ
+        graph_panelBadge_draw(g_graph_box_subGraph, SUB_GRAPH_LABEL_TEXT, SUB_GRAPH_LABEL_CUSTOM_W);
         
         // --- g_graph_ampGraphHigh ---
         graph_ampGraphHigh_draw();
@@ -1220,6 +1317,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_box_ampGraphHigh.w - SW_PANELS * 2,
             g_graph_box_ampGraphHigh.h - SW_PANELS * 2
         );
+        graph_panelBadge_draw(g_graph_box_ampGraphHigh, "High", SUB_GRAPH_LABEL_CUSTOM_W);
 
         // --- g_graph_ampGraphLow ---
         graph_ampGraphLow_draw();
@@ -1240,11 +1338,10 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_graph_box_ampGraphLow.w - SW_PANELS * 2,
             g_graph_box_ampGraphLow.h - SW_PANELS * 2
         );
+        graph_panelBadge_draw(g_graph_box_ampGraphLow, "Low", SUB_GRAPH_LABEL_CUSTOM_W);
         
         g_graph.pop();
     }
-
-
 
     // --- 背景レイヤー (g_info_screen_bg) ---
     // Torus/Cubeで内容が共通のため、画面種別に関係なく毎フレーム描画する
@@ -1259,10 +1356,14 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     }
 
     // --- 3D形状レイヤー (g_info_screen_shape: Framebuffer): カメラ管理 ---
-    let defaultShapeCam = null; // Torus/Cube/Cylinder 用の標準正面カメラ
-    let blankCam = null;        // Blank 専用の公式カメラオブジェクト
+    let defaultShapeCam = null; // Cube/Cylinder 用の標準正面カメラ
+    let torusCam = null;        // Torus 専用のカメラ（低音RMSズーム連動）
+    let torusCam_lastZ = 900;   // カメラZ位置キャッシュ（トランジション中の静止用）
+    let cityCam = null;         // City 専用の公式カメラオブジェクト
 
-    // Torus / Cube / Cylinder 用に標準の正面カメラを明示セットする（アスペクト比とトランジション干渉の補正）
+    const TORUS_ZOOM_RANGE = 250; // 低音RMS連動のズーム幅（元コードの70から拡大）
+
+    // Cube / Cylinder 用に標準の正面カメラを明示セットする（アスペクト比とトランジション干渉の補正）
     function info_screen_defaultCamera_set()
     {
         if (!defaultShapeCam) {
@@ -1282,7 +1383,24 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     // --- 3D形状レイヤー: Torus ---
     function info_screenTorus_draw(frame = p.frameCount)
     {
-        info_screen_defaultCamera_set();
+        if (!torusCam) {
+            torusCam = p.createCamera();
+        }
+        p.setCamera(torusCam);
+
+        let aspect = g_info_box_screen.w / g_info_box_screen.h;
+        let fov = 2 * Math.atan(g_info_box_screen.h / 2 / 800);
+        torusCam.perspective(fov, aspect, 0.1, 3000);
+
+        // カメラの動き（ライブ時のみ更新し、トランジション中は最後の値で静止する）
+        let isLive_torus = (frame === p.frameCount);
+        if (isLive_torus) {
+            let bin_count = getBinCount(lowpass.frequency.value, an_lowFreq.fftSize, audio_ctx.sampleRate);
+            let rms = getRMS(an_lowFreq_array.slice(0, bin_count));
+            torusCam_lastZ = 900 - p.map(rms, 0, 255, 0, TORUS_ZOOM_RANGE);
+        }
+        torusCam.setPosition(0, 0, torusCam_lastZ);
+        torusCam.lookAt(0, 0, 0);
 
         p.push();
         p.rotateX(frame * g_info_torus.rotX_speed);
@@ -1293,7 +1411,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let torus_stroke = col_line.get();
         torus_stroke.setAlpha(150);
         p.stroke(torus_stroke);
-        p.strokeWeight(lineWeight(1));
+        p.strokeWeight(1);
 
         p.torus(
             g_info_torus.radius1,
@@ -1308,14 +1426,15 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     // --- 3D形状レイヤー: Cube ---
     const CUBE_COUNT = 16;
     const CUBE_POS_RANGE = 100;
-    const CUBE_BASE_SIZE_MIN = 25;
-    const CUBE_BASE_SIZE_MAX = 150;
-    const CUBE_AMP_SIZE_RANGE = 400;
+    const CUBE_BASE_SIZE_MIN = 20;
+    const CUBE_BASE_SIZE_MAX = 350;
+    const CUBE_AMP_SIZE_RANGE = 700;
     function info_screenCube_draw(frame = p.frameCount)
     {
         info_screen_defaultCamera_set();
 
         if (g_info_cubes.length === 0) {
+            let cityBinCount = an_city_array ? an_city_array.length : 1024;
             for (let i = 0; i < CUBE_COUNT; i++) {
                 g_info_cubes.push({
                     x: p.random(-CUBE_POS_RANGE, CUBE_POS_RANGE),
@@ -1323,6 +1442,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
                     z: p.random(-CUBE_POS_RANGE, CUBE_POS_RANGE),
                     baseSize: p.random(CUBE_BASE_SIZE_MIN, CUBE_BASE_SIZE_MAX),
                     lastAmp: 0,
+                    binIndex: Math.floor(p.random(0, cityBinCount)), // an_city_array からランダムに選んだビン
                 });
             }
         }
@@ -1335,14 +1455,14 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         p.noFill();
         let cube_stroke = col_line.get();
         p.stroke(cube_stroke);
-        p.strokeWeight(lineWeight(1));
+        p.strokeWeight(1);
 
         let isLive = (frame === p.frameCount);
 
         for (let i = 0; i < g_info_cubes.length; i++) {
             let cube = g_info_cubes[i];
             if (isLive) {
-                cube.lastAmp = an_freq_array[i] ?? 0;
+                cube.lastAmp = (an_city_array && an_city_array.length > 0) ? an_city_array[cube.binIndex] ?? 0 : 0;
             }
             let size = cube.baseSize + p.map(cube.lastAmp, 0, 255, 0, CUBE_AMP_SIZE_RANGE);
 
@@ -1369,7 +1489,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let cylinder_stroke = col_line.get();
         cylinder_stroke.setAlpha(150);
         p.stroke(cylinder_stroke);
-        p.strokeWeight(lineWeight(1));
+        p.strokeWeight(1);
 
         p.cylinder(
             g_info_cylinder.radius,
@@ -1386,30 +1506,31 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     const BUILDING_CELL_W = 60; // 1マスの幅（隙間込み）
     const BUILDING_CELL_D = 60; // 1マスの奥行き（隙間込み）
     const BUILDING_GAP = 20;     // 隣のビルとの隙間
-    const BUILDING_BASE_HEIGHT = 20;     // ベースの高さ (px)
-    const BUILDING_AMP_HEIGHT_MAX = 350; // Amplitude による最大追加高さ (px)
+    const BUILDING_BASE_HEIGHT = 50;     // ベースの高さ (px)
+    const BUILDING_AMP_HEIGHT_MAX = 450; // Amplitude による最大追加高さ (px)
+    const BUILDING_VACANCY_RATE = 0.25;  // 空き地（スキップ）の確率 (25%)
     const BUILDING_SCROLL_SPEED = 5.0; // 前進スクロール速度 (px/frame)
     const CAMERA_PAN_SPEED = 0.0002;    // 首振りの速度（小さいほど遅い）
     const CAMERA_PAN_ROTATIONS = 2;     // 片方向への最大回転数（2回転）
 
-    function info_screenBlank_draw(frame = p.frameCount)
+    function info_screenCity_draw(frame = p.frameCount)
     {
         // 初回に公式カメラを作成
-        if (!blankCam) {
-            blankCam = p.createCamera();
+        if (!cityCam) {
+            cityCam = p.createCamera();
         }
-        p.setCamera(blankCam);
+        p.setCamera(cityCam);
 
         // Framebuffer の縦横比に合わせたアスペクト比を設定
         let aspect = g_info_box_screen.w / g_info_box_screen.h;
         let fov = 2 * Math.atan(g_info_box_screen.h / 2 / 800);
-        blankCam.perspective(fov, aspect, 0.1, 3000);
+        cityCam.perspective(fov, aspect, 0.1, 3000);
 
         // ─── カメラの配置（街のど真ん中・全周囲首振り） ───
         let camX = 0;
         let camY = -500; // ビルを見下ろす適度な高さ
         let camZ = 0;    // 街の中心 (Z=0)
-        blankCam.setPosition(camX, camY, camZ);
+        cityCam.setPosition(camX, camY, camZ);
 
         // 右に2回転（+4π）➔ 左に2回転（-4π）をゆっくり往復
         let maxPanAngle = CAMERA_PAN_ROTATIONS * 2 * Math.PI;
@@ -1420,18 +1541,24 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let targetY = -300;   // 地面付近を見下ろす視線をキープ
         let targetZ = camZ - Math.cos(panAngle) * lookDist;
 
-        blankCam.lookAt(targetX, targetY, targetZ);
+        cityCam.lookAt(targetX, targetY, targetZ);
 
         p.push();
         p.fill(col_bg_main.get());
         p.stroke(col_line.get());
-        p.strokeWeight(lineWeight(1));
+        p.strokeWeight(1);
 
         // ─── 無限前進スクロール計算（奥 -Z から手前 +Z へ流す） ───
         let scrollDist = frame * BUILDING_SCROLL_SPEED;
         let totalDepth = BUILDING_ROWS * BUILDING_CELL_D;
         let footprint_w = BUILDING_CELL_W - BUILDING_GAP;
         let footprint_d = BUILDING_CELL_D - BUILDING_GAP;
+
+        let isLive = (frame === p.frameCount);
+        let totalBuildings = BUILDING_ROWS * BUILDING_COLS;
+        if (g_info_city_last_amps.length !== totalBuildings) {
+            g_info_city_last_amps = new Array(totalBuildings).fill(0);
+        }
 
         for (let row = 0; row < BUILDING_ROWS; row++) {
             // スクロールにより「奥（-Z）から手前（+Z）」へ流れる Z 座標
@@ -1447,6 +1574,13 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             for (let col = 0; col < BUILDING_COLS; col++) {
                 let x = (col - (BUILDING_COLS - 1) / 2) * BUILDING_CELL_W;
 
+                // ─── 空き地（スキップ）判定：絶対座標に基づく決定論的乱数 ───
+                let spawnSeed = Math.abs(Math.sin(col * 39.346 + absRowIndex * 11.135) * 43758.5453);
+                let spawnRand = spawnSeed - Math.floor(spawnSeed);
+                if (spawnRand < BUILDING_VACANCY_RATE) {
+                    continue; // 25%の確率で空き地としてスキップ
+                }
+
                 // ─── 円形ラジアルフォグのアルファ計算 ───
                 let distFromCenter = Math.hypot(x, z);
                 let normDist = distFromCenter / maxRadius; // 0.0 (中心) 〜 1.0 (外周)
@@ -1455,10 +1589,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
                 if (alphaRatio <= 0) continue; // 完全に見えないビルは描画スキップして高速化
                 let alphaVal = alphaRatio * 255;
 
-                // ビル固有の決定論的疑似乱数から担当周波数ビン（0〜31）を決定
+                // ビル固有の決定論的疑似乱数から担当周波数ビン（0〜1023）を決定
                 let seed = Math.abs(Math.sin(col * 12.9898 + absRowIndex * 78.233) * 43758.5453);
-                let binIndex = Math.floor((seed - Math.floor(seed)) * (an_freq_array ? an_freq_array.length : 32));
-                let amp = (an_freq_array && an_freq_array.length > 0) ? an_freq_array[binIndex] : 0;
+                let rand = seed - Math.floor(seed);
+                let binIndex = Math.floor(rand * (an_city_array ? an_city_array.length : 1024));
+
+                let buildingIdx = row * BUILDING_COLS + col;
+                if (isLive) {
+                    g_info_city_last_amps[buildingIdx] = (an_city_array && an_city_array.length > 0) ? an_city_array[binIndex] : 0;
+                }
+                let amp = g_info_city_last_amps[buildingIdx];
                 let audioHeight = p.map(amp, 0, 255, 0, BUILDING_AMP_HEIGHT_MAX);
                 let height = BUILDING_BASE_HEIGHT + audioHeight;
 
@@ -1481,22 +1621,27 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         p.pop();
     }
 
-    // 画面名から Torus/Cube/Cylinder/Blank の描画関数を呼び分ける
+    // 画面名から Torus/Cube/Cylinder/City の描画関数を呼び分ける
     function info_screenShape_drawByName(screenName, frame = p.frameCount)
     {
         switch (screenName) {
             case "none":
                 // 何も描画しない（非再生中などに使う）
                 break;
+            case "Cube":
             case "cube":
                 info_screenCube_draw(frame);
                 break;
+            case "Cylinder":
             case "cylinder":
                 info_screenCylinder_draw(frame);
                 break;
+            case "City":
+            case "city":
             case "blank":
-                info_screenBlank_draw(frame);
+                info_screenCity_draw(frame);
                 break;
+            case "Torus":
             case "torus":
             default:
                 info_screenTorus_draw(frame);
@@ -1504,7 +1649,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         }
     }
 
-    // --- 合成パネル (g_info_screen): 白枠 + bg + shape を貼り合わせ、g_infoに配置 ---
+    // --- 合成パネル (g_info_screen): 白枠 + bg を貼り合わせ、g_infoに配置 ---
     function info_screenPanel_draw()
     {
         g_info_screen.push();
@@ -1514,26 +1659,14 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         g_info_screen.fill(col_line.get());
         g_info_screen.rect(0, 0, g_info_screen.width, g_info_screen.height);
 
-        // 背景テクスチャ (インナーストローク)
+        // 背景テクスチャ (インナーストローク & 上側コンテンツ領域)
         g_info_screen.texture(g_info_screen_bg);
         g_info_screen.rect(
             SW_PANELS,
             SW_PANELS,
             g_info_screen.width - SW_PANELS * 2,
-            g_info_screen.height - SW_PANELS * 2
+            g_info_screen.height - SW_PANELS * 2 - INDICATOR_BAR_H
         );
-
-        // トランジション中の境界線（スキャンライン）
-        if (g_infoTransition.active) {
-            let lineY = g_infoTransition.progress * g_info_screen.height;
-            let lineH = 1; // 線の太さ(px)
-
-            let line_col = col_line.get();
-            line_col.setAlpha(255);
-            g_info_screen.noStroke();
-            g_info_screen.fill(line_col);
-            g_info_screen.rect(0, lineY - lineH / 2, g_info_screen.width, lineH);
-        }
 
         g_info_screen.pop();
 
@@ -1548,6 +1681,81 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_info_box_screen.h
         );
         g_info.pop();
+    }
+
+    // --- スクリーン最前面オーバーレイ（インジケーターバー、スキャンライン）の描画 ---
+    function info_screenOverlay_draw()
+    {
+        let screen_inner_x = SCREEN_MARGIN + SW_SCREENS + g_info_box_screen.x + SW_PANELS;
+        let screen_inner_y = SCREEN_MARGIN + SW_SCREENS + g_info_box_screen.y + SW_PANELS;
+        let screen_inner_w = g_info_box_screen.w - SW_PANELS * 2;
+        let screen_inner_h = g_info_box_screen.h - SW_PANELS * 2;
+
+        p.push();
+
+        // スクリーン名インジケーターバー（枠の内側、最下部）
+        {
+            let barH = INDICATOR_BAR_H;
+            let barY = screen_inner_y + screen_inner_h - barH;
+            let barW = screen_inner_w;
+            let textPadding = 12;
+
+            // バー背景（col_line色）
+            p.noStroke();
+            let c = col_line.get()
+            c.setAlpha(200)
+            p.fill(c);
+            p.rect(screen_inner_x, barY, barW, barH);
+
+            // スクリーン名テキスト（col_bg_main色、左寄せ）
+            p.fill(col_bg_main.get());
+            p.textSize(INDICATOR_FONT_SIZE);
+            p.textAlign(p.LEFT, p.CENTER);
+            let screenIndex = SCREEN_ORDER.indexOf(currentInfoScreen);
+            let displayText = (screenIndex !== -1 ? `[${screenIndex + 1}] ` : "") + currentInfoScreen;
+            p.text(
+                displayText,
+                screen_inner_x + textPadding,
+                barY + barH / 2
+            );
+        }
+
+        let content_y = screen_inner_y;
+        let content_h = screen_inner_h - INDICATOR_BAR_H;
+
+        // デバッグ情報的なやつ（インジケーターバーの下、オーバーレイ：再生時のみ表示）
+        if (is_playing) {
+            let debugY = content_y + 10;
+            let paddingX = 20;
+            let resText = `${Math.round(screen_inner_w)}x${Math.round(content_h)}@30Hz`;
+            let playFrames = Math.max(0, p.frameCount - playback_start_frame);
+
+            p.noStroke();
+            p.fill(col_line.get());
+            p.textSize(40);
+
+            // 画面の左上（インジケーターバーの下）：再生開始からのフレーム数カウント（数字のみ）
+            p.textAlign(p.LEFT, p.TOP);
+            p.text(playFrames, screen_inner_x + paddingX, debugY);
+
+            // 画面の右上（インジケーターバーの下）：解像度（800x600形式）
+            p.textAlign(p.RIGHT, p.TOP);
+            p.text(resText, screen_inner_x + screen_inner_w - paddingX, debugY);
+        }
+
+        // トランジション中の境界線（スキャンライン：インジケーターバー下端から画面下端までを走査）
+        if (g_infoTransition.active) {
+            let lineY = content_y + g_infoTransition.progress * content_h;
+            let lineH = 1; // 線の太さ(px)
+
+            let line_col = col_line.get();
+            line_col.setAlpha(255);
+            p.noStroke();
+            p.fill(line_col);
+            p.rect(screen_inner_x, lineY - lineH / 2, screen_inner_w, lineH);
+        }
+
+        p.pop();
     }
 
     // スキャンライントランジション中の描画：g_info_screen_shape を
@@ -1689,7 +1897,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         // これがそのまま左右の境界線位置と一致する
         g_info_terminal.push();
         g_info_terminal.stroke(col_line.get());
-        g_info_terminal.strokeWeight(lineWeight(1));
+        g_info_terminal.strokeWeight(1);
         g_info_terminal.line(0, -g_info_terminal.height / 2, 0, g_info_terminal.height / 2);
         g_info_terminal.pop();
 
@@ -1737,11 +1945,12 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     }
 
     // トランジション開始の共通ヘルパー（"i"キーでの画面切替、再生/停止トリガーの両方から使う）
+    // force=true の場合、トランジション中でも即座に上書きして新しいトランジションを開始する
     // 戻り値: トランジションを開始できたら true、多重起動などで無視した場合は false
-    function info_transition_start(fromScreen, toScreen)
+    function info_transition_start(fromScreen, toScreen, force = false)
     {
-        if (g_infoTransition.active) {
-            return false; // トランジション中は多重起動しない
+        if (g_infoTransition.active && !force) {
+            return false; // トランジション中は多重起動しない（force指定時を除く）
         }
 
         g_infoTransition.active = true;
@@ -1749,7 +1958,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         g_infoTransition.toScreen = toScreen;
         g_infoTransition.startFrame = p.frameCount;
 
-        console.log("info transition:", fromScreen, "->", toScreen);
+        console.log("info transition:", fromScreen, "->", toScreen, force ? "(forced)" : "");
 
         return true;
     }
@@ -1758,7 +1967,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     p.keyPressed = () => 
     {
         if (p.key === "i" || p.key === "I") {
-            const SCREEN_ORDER = ["blank", "torus", "cube", "cylinder"];
             let nextScreen = SCREEN_ORDER[(SCREEN_ORDER.indexOf(currentInfoScreen) + 1) % SCREEN_ORDER.length];
 
             if (is_playing) {
@@ -1813,10 +2021,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         an_lowFreq.getByteFrequencyData(an_lowFreq_array);
         an_bass.getByteFrequencyData(an_bass_array);
         an_high.getByteFrequencyData(an_high_array);
-        applySensitivity(an_freq_array);
-        applySensitivity(an_lowFreq_array);
-        applySensitivity(an_bass_array);
-        applySensitivity(an_high_array);
+        if (an_city && an_city_array) {
+            an_city.getByteFrequencyData(an_city_array);
+        }
+
+        // 感度を全アナライザー配列に適用（FFT後スケーリング）
+        applyGain(an_freq_array,    SENSITIVITY);
+        applyGain(an_lowFreq_array, SENSITIVITY);
+        applyGain(an_bass_array,    SENSITIVITY);
+        applyGain(an_high_array,    SENSITIVITY);
+        if (an_city_array) applyGain(an_city_array, SENSITIVITY);
 
         // カメラの動き
         let bin_count = getBinCount(lowpass.frequency.value, an_lowFreq.fftSize, audio_ctx.sampleRate);
@@ -1848,12 +2062,12 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             g_info.height
         );
 
-        // 3D形状レイヤー（Framebuffer）を g_info のスクリーン領域の上に直接重ねる（Y反転補正 & インナーストロークの内側に配置）
+        // 3D形状レイヤー（Framebuffer）を g_info のスクリーン領域の上に直接重ねる（Y反転補正 & 上側コンテンツ領域に配置）
         if (is_playing || g_infoTransition.active) {
             let shape_x = SCREEN_MARGIN + SW_SCREENS + g_info_box_screen.x + SW_PANELS;
             let shape_y = SCREEN_MARGIN + SW_SCREENS + g_info_box_screen.y + SW_PANELS;
             let shape_w = g_info_box_screen.w - SW_PANELS * 2;
-            let shape_h = g_info_box_screen.h - SW_PANELS * 2;
+            let shape_h = g_info_box_screen.h - SW_PANELS * 2 - INDICATOR_BAR_H;
 
             p.push();
             p.translate(shape_x, shape_y + shape_h);
@@ -1862,6 +2076,9 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             p.rect(0, 0, shape_w, shape_h);
             p.pop();
         }
+
+        // 最前面オーバーレイ（インジケーターバー、スキャンライン）を描画
+        info_screenOverlay_draw();
 
         // g_graph のインナーストロークと描画
         let graph_x = SCREEN_MARGIN * 3 + CANVAS_W;
@@ -1897,6 +2114,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             sum += e * e;
         }
         return Math.sqrt(sum / array.length);
+    }
+
+    // FFT後のバイト値に感度を直接乗算する（Uint8Array をインプレース変換）
+    // GainNode（対数dBスケール）と異なり、バイト値にリニアに掛けるため
+    // 0.1 → 値が10分の1 という直感的な挙動になる
+    function applyGain(array, gain)
+    {
+        for (let i = 0; i < array.length; i++) {
+            array[i] = Math.min(255, array[i] * gain);
+        }
     }
 
     function sort_lowHigh(freqData)
