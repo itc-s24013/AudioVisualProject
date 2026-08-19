@@ -576,10 +576,6 @@ export default function PresetManager() {
                   <div className="mt-1 text-xs text-slate-500">{form.sensitivity.toFixed(1)}</div>
                 </label>
               </div>
-
-              <div className="rounded-none border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                背景色は各パネルに、線の色と太さはグラフ・フレーム・情報表示に、感度は音声に対するグラフの反応量に適用されます。
-              </div>
             </div>
 
             <button
