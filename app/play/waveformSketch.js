@@ -4,7 +4,16 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     const design = {
         backgroundColor: "#dcf0f0",
         lineColor: "#ffffff",
+        lineWidth: 4,
+        sensitivity: 0.7,
         ...(designSettings || {}),
+    };
+
+    const lineWeight = (base) => base * (design.lineWidth / 4);
+    const applySensitivity = (data) => {
+        for (let i = 0; i < data.length; i++) {
+            data[i] = Math.min(255, data[i] * (design.sensitivity / 0.7));
+        }
     };
 
     const PATH_FONT = "/play/assets/Ac437_IBM_PGC.ttf";
@@ -687,7 +696,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         g_info_particle.background(col_bg_main.get());
         g_info_particle.fill(col_bg_main.get());
         g_info_particle.stroke(p.color(col_bg_main.h, col_bg_main.s, 15));
-        g_info_particle.strokeWeight(2);
+        g_info_particle.strokeWeight(lineWeight(2));
 
         const getPosX = () => Math.floor(Math.random() * PARTICLE_WIDTH) + PARTICLE_START_X;
         const getPosY = () => Math.floor(Math.random() * PARTICLE_HEIGHT) + PARTICLE_START_Y;
@@ -721,11 +730,11 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
         g_graph_mainGraph.stroke(col_line.get());
         // 一番下の線
-        g_graph_mainGraph.strokeWeight(3);
+        g_graph_mainGraph.strokeWeight(lineWeight(3));
         g_graph_mainGraph.line(0, bottom_y, waveform_width, bottom_y);
 
         // 縦の線
-        g_graph_mainGraph.strokeWeight(3);
+        g_graph_mainGraph.strokeWeight(lineWeight(3));
         g_graph_mainGraph.line(0, top_y, 0, bottom_y);
 
 
@@ -754,7 +763,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
             c.setAlpha(alpha_val);
             g_graph_mainGraph.translate(0, y);
             g_graph_mainGraph.stroke(c);
-            g_graph_mainGraph.strokeWeight(1);
+            g_graph_mainGraph.strokeWeight(lineWeight(1));
             g_graph_mainGraph.line(0, 0, waveform_width, 0);
             c.setAlpha(255);
             g_graph_mainGraph.pop();
@@ -978,7 +987,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         
         g_graph_ampGraphHigh_rawLine.noFill();
         g_graph_ampGraphHigh_rawLine.stroke(col_line.get());
-        g_graph_ampGraphHigh_rawLine.strokeWeight(10);
+        g_graph_ampGraphHigh_rawLine.strokeWeight(lineWeight(10));
 
         g_graph_ampGraphHigh_rawLine.beginShape();
         for (let i = 0; i < amp_history_high.length; i++) {
@@ -1038,7 +1047,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         
         raw_line.noFill();
         raw_line.stroke(col_line.get());
-        raw_line.strokeWeight(2);
+        raw_line.strokeWeight(lineWeight(2));
 
         // 連続した波形ラインの描画 (nullをスキップして線分割)
         let in_shape = false;
@@ -1079,7 +1088,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         graphics.push();
         graphics.translate(-w / 2, -h / 2);
         graphics.stroke(col_graph_bgLine.get());
-        graphics.strokeWeight(1);
+        graphics.strokeWeight(lineWeight(1));
         // for (let x = 0; x <= w; x += grid_size) {
         //     graphics.line(x, 0, x, h);
         // }
@@ -1284,7 +1293,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let torus_stroke = col_line.get();
         torus_stroke.setAlpha(150);
         p.stroke(torus_stroke);
-        p.strokeWeight(1);
+        p.strokeWeight(lineWeight(1));
 
         p.torus(
             g_info_torus.radius1,
@@ -1326,7 +1335,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         p.noFill();
         let cube_stroke = col_line.get();
         p.stroke(cube_stroke);
-        p.strokeWeight(1);
+        p.strokeWeight(lineWeight(1));
 
         let isLive = (frame === p.frameCount);
 
@@ -1360,7 +1369,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         let cylinder_stroke = col_line.get();
         cylinder_stroke.setAlpha(150);
         p.stroke(cylinder_stroke);
-        p.strokeWeight(1);
+        p.strokeWeight(lineWeight(1));
 
         p.cylinder(
             g_info_cylinder.radius,
@@ -1416,7 +1425,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         p.push();
         p.fill(col_bg_main.get());
         p.stroke(col_line.get());
-        p.strokeWeight(1);
+        p.strokeWeight(lineWeight(1));
 
         // ─── 無限前進スクロール計算（奥 -Z から手前 +Z へ流す） ───
         let scrollDist = frame * BUILDING_SCROLL_SPEED;
@@ -1680,7 +1689,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         // これがそのまま左右の境界線位置と一致する
         g_info_terminal.push();
         g_info_terminal.stroke(col_line.get());
-        g_info_terminal.strokeWeight(1);
+        g_info_terminal.strokeWeight(lineWeight(1));
         g_info_terminal.line(0, -g_info_terminal.height / 2, 0, g_info_terminal.height / 2);
         g_info_terminal.pop();
 
@@ -1804,6 +1813,10 @@ export function sketch(p, audioSrc, designSettings, playback = {})
         an_lowFreq.getByteFrequencyData(an_lowFreq_array);
         an_bass.getByteFrequencyData(an_bass_array);
         an_high.getByteFrequencyData(an_high_array);
+        applySensitivity(an_freq_array);
+        applySensitivity(an_lowFreq_array);
+        applySensitivity(an_bass_array);
+        applySensitivity(an_high_array);
 
         // カメラの動き
         let bin_count = getBinCount(lowpass.frequency.value, an_lowFreq.fftSize, audio_ctx.sampleRate);

@@ -26,6 +26,8 @@ const initialForm = {
   name: "",
   backgroundColor: "#dcf0f0",
   lineColor: "#ffffff",
+  lineWidth: 4,
+  sensitivity: 0.7,
 };
 
 export default function PresetManager() {
@@ -67,6 +69,8 @@ export default function PresetManager() {
     setDesignSettings({
       backgroundColor: preset.backgroundColor ?? preset.lineColor,
       lineColor: preset.lineColor,
+      lineWidth: preset.lineWidth,
+      sensitivity: preset.sensitivity,
     });
     setSelectedPresetId(preset.id);
     if (!options?.silent) {
@@ -146,10 +150,9 @@ export default function PresetManager() {
         name: form.name.trim(),
         backgroundColor: form.backgroundColor,
         lineColor: form.lineColor,
-        // 以下は既存の保存形式を保つための互換値。
-        lineWidth: 4,
+        lineWidth: form.lineWidth,
         graphType: "bars",
-        sensitivity: 0.7,
+        sensitivity: form.sensitivity,
         effectType: "lens",
       };
 
@@ -180,6 +183,8 @@ export default function PresetManager() {
       name: preset.name,
       backgroundColor: preset.backgroundColor,
       lineColor: preset.lineColor,
+      lineWidth: preset.lineWidth,
+      sensitivity: preset.sensitivity,
     });
     setEditingId(preset.id);
     showToast(`${preset.name} を編集中です。`);
@@ -542,8 +547,38 @@ export default function PresetManager() {
                 </div>
               </label>
 
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">線の太さ</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="8"
+                    step="1"
+                    value={form.lineWidth}
+                    onChange={(event) => setForm((current) => ({ ...current, lineWidth: Number(event.target.value) }))}
+                    className="w-full accent-slate-900"
+                  />
+                  <div className="mt-1 text-xs text-slate-500">{form.lineWidth}px</div>
+                </label>
+
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="mb-2 block">感度</span>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1.4"
+                    step="0.1"
+                    value={form.sensitivity}
+                    onChange={(event) => setForm((current) => ({ ...current, sensitivity: Number(event.target.value) }))}
+                    className="w-full accent-slate-900"
+                  />
+                  <div className="mt-1 text-xs text-slate-500">{form.sensitivity.toFixed(1)}</div>
+                </label>
+              </div>
+
               <div className="rounded-none border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                背景色は各パネルに、線の色はグラフ・フレーム・情報表示に適用されます。
+                背景色は各パネルに、線の色と太さはグラフ・フレーム・情報表示に、感度は音声に対するグラフの反応量に適用されます。
               </div>
             </div>
 

@@ -13,12 +13,16 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 export interface DesignSettings {
   backgroundColor: string;
   lineColor: string;
+  lineWidth: number;
+  sensitivity: number;
 }
 
 // /play の waveformSketch.js と揃えたデフォルト値
 export const DEFAULT_DESIGN_SETTINGS: DesignSettings = {
   backgroundColor: "#dcf0f0",
   lineColor: "#ffffff",
+  lineWidth: 4,
+  sensitivity: 0.7,
 };
 
 interface DesignSettingsContextValue {
