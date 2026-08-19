@@ -387,7 +387,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
     p.setup = async () => 
     {
-        setupAudio();
+        setupAudio(audioSrc);
 
         p.frameRate(30);
 
