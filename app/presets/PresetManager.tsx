@@ -548,19 +548,6 @@ export default function PresetManager() {
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="mb-2 block">線の太さ</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="8"
-                    step="1"
-                    value={form.lineWidth}
-                    onChange={(event) => setForm((current) => ({ ...current, lineWidth: Number(event.target.value) }))}
-                    className="w-full accent-slate-900"
-                  />
-                  <div className="mt-1 text-xs text-slate-500">{form.lineWidth}px</div>
-                </label>
 
                 <label className="block text-sm font-medium text-slate-700">
                   <span className="mb-2 block">感度</span>
