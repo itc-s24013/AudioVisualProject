@@ -2,11 +2,7 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 {
     // /presets で選択されたデザイン設定(未指定時はデフォルト値にフォールバック)
     const design = {
-        lineColor: "#dcf0f0", // 使用中
-        lineWidth: 4, // 未使用
-        graphType: "bars", // 未使用
-        sensitivity: 0.7, // 未使用
-        effectType: "lens", // 未使用
+        lineColor: "#dcf0f0",
         ...(designSettings || {}),
     };
 
@@ -619,7 +615,6 @@ export function sketch(p, audioSrc, designSettings, playback = {})
 
 
 
-        console.log(p.hue(p.color(design.lineColor)));
         // colors
         col_bg_main = {
             h: p.hue(p.color(design.lineColor)),

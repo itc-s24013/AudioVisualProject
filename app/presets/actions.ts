@@ -56,7 +56,7 @@ function formatPreset(preset: {
   return {
     id: preset.id,
     name: preset.name,
-    lineColor: (design?.lineColor ?? (settings.lineColor as string | undefined) ?? "#7dd3fc"),
+    lineColor: (design?.lineColor ?? (settings.lineColor as string | undefined) ?? "#dcf0f0"),
     lineWidth: Number(design?.lineWidth ?? (settings.lineWidth as number | undefined) ?? 4),
     graphType: String(design?.graphType ?? (settings.graphType as string | undefined) ?? "bars"),
     sensitivity: Number(design?.sensitivity ?? (settings.sensitivity as number | undefined) ?? 0.7),
