@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const PRODUCTION_ORIGIN = "https://audio-visual-project-chi.vercel.app";
+// const PRODUCTION_ORIGIN = "https://audio-visual-project-chi.vercel.app";
+const PRODUCTION_ORIGIN = "https://audio-visual-project-git-s24013-s24013s-projects.vercel.app";
 
 export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");

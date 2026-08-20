@@ -11,20 +11,18 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 export interface DesignSettings {
+  backgroundColor: string;
   lineColor: string;
   lineWidth: number;
-  graphType: string;
   sensitivity: number;
-  effectType: string;
 }
 
-// PresetManager.tsx の initialForm と揃えたデフォルト値
+// /play の waveformSketch.js と揃えたデフォルト値
 export const DEFAULT_DESIGN_SETTINGS: DesignSettings = {
-  lineColor: "#3f3f46",
+  backgroundColor: "#dcf0f0",
+  lineColor: "#ffffff",
   lineWidth: 4,
-  graphType: "bars",
   sensitivity: 0.7,
-  effectType: "lens",
 };
 
 interface DesignSettingsContextValue {

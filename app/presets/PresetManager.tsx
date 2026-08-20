@@ -10,6 +10,7 @@ import { useDesignSettings } from "@/app/context/DesignSettingProvider";
 interface PresetItem {
   id: string;
   name: string;
+  backgroundColor: string;
   lineColor: string;
   lineWidth: number;
   graphType: string;
@@ -23,112 +24,11 @@ const STORAGE_KEY = "audio-visualizer-presets";
 
 const initialForm = {
   name: "",
-  lineColor: "#3f3f46",
+  backgroundColor: "#dcf0f0",
+  lineColor: "#ffffff",
   lineWidth: 4,
-  graphType: "bars",
   sensitivity: 0.7,
-  effectType: "lens",
 };
-
-const previewValues = [24, 52, 37, 67, 44, 72];
-
-function DesignPreview({
-  lineColor,
-  lineWidth,
-  graphType,
-  effectType,
-}: Pick<PresetItem, "lineColor" | "lineWidth" | "graphType" | "effectType">) {
-  const barGap = Math.max(2, 14 - lineWidth);
-  const isGlow = effectType === "glow";
-  const previewFilter = isGlow ? "blur(4px)" : undefined;
-  const elementFilter = isGlow
-    ? `drop-shadow(0 0 12px ${lineColor}) drop-shadow(0 0 24px ${lineColor}80)`
-    : effectType === "none"
-      ? undefined
-      : `drop-shadow(0 2px 4px ${lineColor}40)`;
-
-  if (graphType === "line") {
-    const points = previewValues
-      .map((value, index) => {
-        const x = (index / (previewValues.length - 1)) * 100;
-        return `${x},${100 - value}`;
-      })
-      .join(" ");
-
-    return (
-      <svg
-        className="h-full w-full overflow-visible"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        aria-label="ラインのプレビュー"
-        style={{ filter: previewFilter }}
-      >
-        <polyline
-          points={points}
-          fill="none"
-          stroke={lineColor}
-          strokeWidth={lineWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      className="h-full w-full overflow-visible"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-label={graphType === "stack" ? "スタックのプレビュー" : "バーのプレビュー"}
-      style={{ filter: previewFilter }}
-    >
-      {graphType === "stack" ? <line x1="0" y1="50" x2="100" y2="50" stroke="#94a3b8" strokeWidth="1" /> : null}
-      {previewValues.map((value, index) => {
-        const x = 4 + index * 16.2 + barGap / 10;
-        const width = 12 - barGap / 5;
-
-        if (graphType === "stack") {
-          const halfHeight = value / 2;
-          return (
-            <g key={index} style={{ filter: previewFilter }}>
-              <rect
-                x={x}
-                y={50 - halfHeight}
-                width={width}
-                height={halfHeight}
-                fill={lineColor}
-                style={{ filter: elementFilter }}
-              />
-              <rect
-                x={x}
-                y="50"
-                width={width}
-                height={halfHeight}
-                fill={lineColor}
-                opacity="0.65"
-                style={{ filter: elementFilter }}
-              />
-            </g>
-          );
-        }
-
-        return (
-          <rect
-            key={index}
-            x={x}
-            y={100 - value}
-            width={width}
-            height={value}
-            fill={lineColor}
-            style={{ filter: elementFilter }}
-          />
-        );
-      })}
-    </svg>
-  );
-}
 
 export default function PresetManager() {
   const [presets, setPresets] = useState<PresetItem[]>([]);
@@ -167,11 +67,10 @@ export default function PresetManager() {
   // silent: true の場合はトーストを出さない(初期表示時の自動選択などで使用)。
   const applyDesign = (preset: PresetItem, options?: { silent?: boolean }) => {
     setDesignSettings({
+      backgroundColor: preset.backgroundColor ?? preset.lineColor,
       lineColor: preset.lineColor,
       lineWidth: preset.lineWidth,
-      graphType: preset.graphType,
       sensitivity: preset.sensitivity,
-      effectType: preset.effectType,
     });
     setSelectedPresetId(preset.id);
     if (!options?.silent) {
@@ -249,11 +148,12 @@ export default function PresetManager() {
       const payload = {
         id: editingId ?? undefined,
         name: form.name.trim(),
+        backgroundColor: form.backgroundColor,
         lineColor: form.lineColor,
-        lineWidth: Number(form.lineWidth),
-        graphType: form.graphType,
-        sensitivity: Number(form.sensitivity),
-        effectType: form.effectType,
+        lineWidth: form.lineWidth,
+        graphType: "bars",
+        sensitivity: form.sensitivity,
+        effectType: "lens",
       };
 
       const nextPreset = editingId
@@ -281,11 +181,10 @@ export default function PresetManager() {
   const handleEdit = (preset: PresetItem) => {
     setForm({
       name: preset.name,
+      backgroundColor: preset.backgroundColor,
       lineColor: preset.lineColor,
       lineWidth: preset.lineWidth,
-      graphType: preset.graphType,
       sensitivity: preset.sensitivity,
-      effectType: preset.effectType,
     });
     setEditingId(preset.id);
     showToast(`${preset.name} を編集中です。`);
@@ -487,14 +386,18 @@ export default function PresetManager() {
                           >
                             📌
                           </button>
-                          <div className="h-6 w-6 rounded-none border border-slate-200 shadow-inner" style={{ backgroundColor: preset.lineColor }} />
+                          <div
+                            className="flex h-6 w-10 overflow-hidden rounded-none border border-slate-200 shadow-inner"
+                            aria-label={`背景色 ${preset.backgroundColor}、線の色 ${preset.lineColor}`}
+                          >
+                            <span className="w-1/2" style={{ backgroundColor: preset.backgroundColor }} />
+                            <span className="w-1/2" style={{ backgroundColor: preset.lineColor }} />
+                          </div>
                         </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">線{preset.lineWidth}px</span>
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.graphType}</span>
-                        <span className="rounded-none bg-white border border-slate-200 px-2.5 py-1">{preset.effectType}</span>
+                        <span className="rounded-none border border-slate-200 bg-white px-2.5 py-1">背景・線の色</span>
                       </div>
 
                       <div className="mt-4 flex gap-2">
@@ -609,7 +512,25 @@ export default function PresetManager() {
               </label>
 
               <label className="block text-sm font-medium text-slate-700">
-                <span className="mb-2 block">ラインカラー</span>
+                <span className="mb-2 block">背景色</span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.backgroundColor}
+                    onChange={(event) => setForm((current) => ({ ...current, backgroundColor: event.target.value }))}
+                    className="h-12 w-20 cursor-pointer rounded-none border border-slate-200 bg-slate-50 p-1.5"
+                  />
+                  <input
+                    type="text"
+                    value={form.backgroundColor}
+                    onChange={(event) => setForm((current) => ({ ...current, backgroundColor: event.target.value }))}
+                    className="flex-1 rounded-none border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm uppercase text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </label>
+
+              <label className="block text-sm font-medium text-slate-700">
+                <span className="mb-2 block">線の色</span>
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
@@ -627,77 +548,20 @@ export default function PresetManager() {
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="mb-2 block">線の太さ</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={form.lineWidth}
-                    onChange={(event) => setForm((current) => ({ ...current, lineWidth: Number(event.target.value) }))}
-                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
-                  />
-                </label>
 
                 <label className="block text-sm font-medium text-slate-700">
                   <span className="mb-2 block">感度</span>
                   <input
                     type="range"
                     min="0.2"
-                    max="1"
+                    max="1.4"
                     step="0.1"
                     value={form.sensitivity}
                     onChange={(event) => setForm((current) => ({ ...current, sensitivity: Number(event.target.value) }))}
-                    className="mt-3 w-full accent-slate-900"
+                    className="w-full accent-slate-900"
                   />
                   <div className="mt-1 text-xs text-slate-500">{form.sensitivity.toFixed(1)}</div>
                 </label>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="mb-2 block">グラフタイプ</span>
-                  <select
-                    value={form.graphType}
-                    onChange={(event) => setForm((current) => ({ ...current, graphType: event.target.value }))}
-                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
-                  >
-                    <option value="bars">バー</option>
-                    <option value="line">ライン</option>
-                    <option value="stack">スタック</option>
-                  </select>
-                </label>
-
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="mb-2 block">エフェクト</span>
-                  <select
-                    value={form.effectType}
-                    onChange={(event) => setForm((current) => ({ ...current, effectType: event.target.value }))}
-                    className="w-full rounded-none border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
-                  >
-                    <option value="lens">レンズ</option>
-                    <option value="glow">グロー</option>
-                    <option value="none">なし</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="pt-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">デザインプレビュー</span>
-                <div className="rounded-none border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    <span>リアルタイムプレビュー</span>
-                    <span>{form.graphType} / {form.effectType}</span>
-                  </div>
-                  <div className="mt-3 flex h-28 items-end gap-2 rounded-none border border-slate-200/60 bg-slate-100 p-4">
-                    <DesignPreview
-                      lineColor={form.lineColor}
-                      lineWidth={form.lineWidth}
-                      graphType={form.graphType}
-                      effectType={form.effectType}
-                    />
-                  </div>
-                </div>
               </div>
             </div>
 
