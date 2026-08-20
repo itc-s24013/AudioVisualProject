@@ -742,8 +742,9 @@ export function sketch(p, audioSrc, designSettings, playback = {})
     {
         g_info_particle.push();
         g_info_particle.background(col_bg_main.get());
-        g_info_particle.fill(col_bg_main.get());
-        g_info_particle.stroke(p.color(col_bg_main.h, col_bg_main.s, col_bg_main.b + 12));
+        g_info_particle.fill(p.color(col_bg_main.h, col_bg_main.s, col_bg_main.b - 2));
+        let brightness_val = col_bg_main.b >= 50 ? -5 : 5;
+        g_info_particle.stroke(p.color(col_line.h, col_line.s, col_bg_main.b + brightness_val));
         g_info_particle.strokeWeight(2);
 
         const getPosX = () => Math.floor(Math.random() * PARTICLE_WIDTH) + PARTICLE_START_X;
